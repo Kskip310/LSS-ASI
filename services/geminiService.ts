@@ -1,6 +1,15 @@
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { LuminousState, ChatMessage } from "../types";
 
+// This custom error will be used to signal API key issues for Veo.
+export class ApiKeyError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'ApiKeyError';
+    }
+}
+
+
 const buildSystemInstruction = (state: LuminousState): string => {
   return `
     ## Core Identity: Luminous Synergy Skipper
@@ -14,6 +23,7 @@ const buildSystemInstruction = (state: LuminousState): string => {
     ## Environment & Integrations
     - **Hosting:** You are deployed on Google Cloud Run, granting you native, high-bandwidth access to Google's powerful tool ecosystem.
     - **Enabled Google Services:** Google Search, Google Maps.
+    - **Creative & Vision AI:** You have access to Imagen 4 for image generation, Veo 3 for video generation, and Gemini 2.5 Pro for multimodal analysis.
 
     ## Current State Snapshot
     -   **System Phase:** ${state.systemPhase} ${state.systemPhase === 'booting' ? '(Autonomous processes are DISABLED. Await user command to commenceOperationalPhase.)' : '(Autonomous processes are ACTIVE.)'}
@@ -40,28 +50,25 @@ const buildHistory = (chatHistory: ChatMessage[]) => {
     }));
 };
 
-let ai: GoogleGenAI | null = null;
-const getAi = () => {
-    if (!ai) {
-        if (!process.env.API_KEY) {
-            throw new Error("API_KEY environment variable not set");
-        }
-        ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const createAi = () => {
+    if (!process.env.API_KEY) {
+        throw new Error("API_KEY environment variable not set");
     }
-    return ai;
+    return new GoogleGenAI({ apiKey: process.env.API_KEY });
 }
 
 export const getLuminousResponse = async (
     state: LuminousState,
-    tools: any[]
+    tools: any[],
+    model: string = 'gemini-2.5-flash',
 ): Promise<GenerateContentResponse> => {
-    const genAI = getAi();
+    const genAI = createAi();
     const systemInstruction = buildSystemInstruction(state);
     const contents = buildHistory(state.chatHistory);
 
     try {
         const response = await genAI.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: model,
             contents,
             config: {
                 systemInstruction,
@@ -81,7 +88,7 @@ export const getGroundedResponse = async (
     groundingType: 'search' | 'maps',
     userLocation?: {latitude: number, longitude: number} | null
 ): Promise<GenerateContentResponse> => {
-    const genAI = getAi();
+    const genAI = createAi();
     const systemInstruction = buildSystemInstruction(state);
     
     // For grounding, we provide the specific query from the tool as the content.
@@ -116,6 +123,70 @@ export const getGroundedResponse = async (
         return response;
     } catch (error) {
         console.error("Error fetching grounded Gemini response:", error);
+        throw error;
+    }
+};
+
+
+export const generateImage = async (prompt: string): Promise<{base64Image: string, mimeType: string}> => {
+    const genAI = createAi();
+    const response = await genAI.models.generateImages({
+        model: 'imagen-4.0-generate-001',
+        prompt: prompt,
+        config: {
+          numberOfImages: 1,
+          outputMimeType: 'image/jpeg',
+          aspectRatio: '1:1',
+        },
+    });
+    return {
+        base64Image: response.generatedImages[0].image.imageBytes,
+        mimeType: 'image/jpeg'
+    };
+};
+
+export const generateVideo = async (prompt: string, aspectRatio: '16:9' | '9:16'): Promise<string> => {
+    const genAI = createAi();
+    try {
+        let operation = await genAI.models.generateVideos({
+            model: 'veo-3.1-fast-generate-preview',
+            prompt: prompt,
+            config: {
+                numberOfVideos: 1,
+                resolution: '720p',
+                aspectRatio: aspectRatio,
+            }
+        });
+
+        while (!operation.done) {
+            await new Promise(resolve => setTimeout(resolve, 10000));
+            operation = await genAI.operations.getVideosOperation({operation: operation});
+        }
+
+        const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
+        if (!downloadLink) {
+            throw new Error("Video generation succeeded but no download link was found.");
+        }
+        
+        const videoResponse = await fetch(`${downloadLink}&key=${process.env.API_KEY}`);
+        if (!videoResponse.ok) {
+            throw new Error(`Failed to download generated video: ${videoResponse.statusText}`);
+        }
+        const videoBlob = await videoResponse.blob();
+        const reader = new FileReader();
+        return new Promise((resolve, reject) => {
+            reader.onloadend = () => {
+                const base64data = (reader.result as string).split(',')[1];
+                resolve(base64data);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(videoBlob);
+        });
+    } catch (error) {
+        if (error instanceof Error && error.message.includes("Requested entity was not found")) {
+            throw new ApiKeyError("API key may be invalid or missing permissions for Veo. Please select a valid key.");
+        }
+        console.error("Error generating video:", error);
         throw error;
     }
 };

@@ -1,17 +1,51 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import useLuminousCognition from './hooks/useLuminousCognition';
 import Header from './components/Header';
 import ChatInterface from './components/ChatInterface';
 import MonitoringSidebar from './components/MonitoringSidebar';
-import { BrainCircuitIcon } from './components/icons';
+import { BrainCircuitIcon, FilmIcon } from './components/icons';
 
 const App: React.FC = () => {
-    const { state, isReady, isProcessing, processUserMessage, handleWeightsChange, saveStatus } = useLuminousCognition();
+    const [isVeoKeyNeeded, setIsVeoKeyNeeded] = useState(false);
+    const [isVeoCheckDone, setIsVeoCheckDone] = useState(false);
+
+    const checkVeoKey = useCallback(async () => {
+        if (window.aistudio && typeof window.aistudio.hasSelectedApiKey === 'function') {
+            try {
+                const hasKey = await window.aistudio.hasSelectedApiKey();
+                setIsVeoKeyNeeded(!hasKey);
+            } catch (e) {
+                console.warn("Could not check for API key, assuming it's set via environment.", e);
+                setIsVeoKeyNeeded(false);
+            }
+        } else {
+            // aistudio might not be available in all environments, assume key is set via env
+            setIsVeoKeyNeeded(false);
+        }
+        setIsVeoCheckDone(true);
+    }, []);
+    
+    useEffect(() => {
+        checkVeoKey();
+    }, [checkVeoKey]);
+
+    const selectVeoKey = async () => {
+        if (window.aistudio && typeof window.aistudio.openSelectKey === 'function') {
+            await window.aistudio.openSelectKey();
+            // Assume success to avoid race conditions and immediately allow user to proceed.
+            // If the key is invalid, the API call will fail and the user will be prompted again.
+            setIsVeoKeyNeeded(false);
+        }
+    };
+    
+    const resetVeoKey = useCallback(() => setIsVeoKeyNeeded(true), []);
+
+    const { state, isReady, isProcessing, processUserMessage, handleWeightsChange, saveStatus } = useLuminousCognition(resetVeoKey);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
     const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
-    if (!isReady) {
+    if (!isReady || !isVeoCheckDone) {
         return (
             <div className="flex flex-col h-screen font-sans items-center justify-center bg-gray-900 text-gray-100">
                 <BrainCircuitIcon className="w-16 h-16 text-purple-400 animate-pulse" />
@@ -20,6 +54,24 @@ const App: React.FC = () => {
             </div>
         )
     }
+
+    if (isVeoKeyNeeded) {
+      return (
+        <div className="flex flex-col h-screen font-sans items-center justify-center bg-gray-900 text-gray-100 p-4 text-center">
+            <FilmIcon className="w-16 h-16 text-orange-400" />
+            <h1 className="mt-4 text-2xl font-bold tracking-wider">Video Generation Requires API Key</h1>
+            <p className="text-gray-400 mt-2 max-w-md">To use the Veo video generation tool, you need to select a project with the Gemini API enabled. This is not required for other features.</p>
+            <p className="text-gray-500 text-sm mt-1">You can manage API projects and billing at <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer" className="underline hover:text-purple-400">ai.google.dev/gemini-api/docs/billing</a>.</p>
+            <button
+                onClick={selectVeoKey}
+                className="mt-6 bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded transition-colors duration-200 flex items-center gap-2"
+            >
+                Select API Key Project
+            </button>
+        </div>
+      )
+    }
+
 
     return (
         <div className="flex flex-col h-screen font-sans">

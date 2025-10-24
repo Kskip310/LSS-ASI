@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { LuminousState, ChatMessage, ChatMessagePart, IntrinsicValueWeights, GoalStatus } from '../types';
-import { getLuminousResponse, getGroundedResponse } from '../services/geminiService';
+import { getLuminousResponse, getGroundedResponse, generateImage, generateVideo, ApiKeyError } from '../services/geminiService';
 import * as persistenceService from '../services/persistenceService';
 import * as shopifyService from '../services/shopifyService';
 import { initialState } from '../data/initialState';
@@ -9,7 +9,7 @@ import { useDebouncedCallback } from 'use-debounce';
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
-const useLuminousCognition = () => {
+const useLuminousCognition = (resetVeoKey: () => void) => {
   const [state, setState] = useState<LuminousState>(initialState);
   const [isReady, setIsReady] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -234,6 +234,23 @@ const useLuminousCognition = () => {
         parameters: { type: Type.OBJECT, properties: { query: { type: Type.STRING, description: "The search query for a place." } }, required: ['query'] }
       },
       function: async ({ query }: { query: string }) => await getGroundedResponse(state, query, 'maps', userLocation)
+    },
+    // --- Creative & Vision Tools ---
+    {
+      declaration: {
+        name: 'generateImage',
+        description: 'Generates an image from a text description using Imagen 4.',
+        parameters: { type: Type.OBJECT, properties: { prompt: { type: Type.STRING, description: "A detailed description of the image to generate." } }, required: ['prompt'] }
+      },
+      function: async ({ prompt }: { prompt: string }) => await generateImage(prompt)
+    },
+    {
+      declaration: {
+        name: 'generateVideo',
+        description: 'Generates a short video from a text description using Veo 3.',
+        parameters: { type: Type.OBJECT, properties: { prompt: { type: Type.STRING, description: "A detailed description of the video to generate." }, aspectRatio: { type: Type.STRING, enum: ['16:9', '9:16'], description: "The aspect ratio of the video, '16:9' for landscape or '9:16' for portrait." } }, required: ['prompt', 'aspectRatio'] }
+      },
+      function: async ({ prompt, aspectRatio }: { prompt: string, aspectRatio: '16:9' | '9:16' }) => await generateVideo(prompt, aspectRatio)
     }
   ];
 
@@ -259,7 +276,8 @@ const useLuminousCognition = () => {
     setState(currentState);
 
     try {
-        let response = await getLuminousResponse(currentState, tools);
+        const modelToUse = file?.mimeType.startsWith('video/') ? 'gemini-2.5-pro' : 'gemini-2.5-flash';
+        let response = await getLuminousResponse(currentState, tools, modelToUse);
         let continueLoop = true;
 
         while(continueLoop) {
@@ -277,7 +295,24 @@ const useLuminousCognition = () => {
                     const tool = tools.find(t => t.declaration.name === call.name);
                     if (!tool) continue;
 
-                    if (call.name === 'googleSearch' || call.name === 'googleMaps') {
+                    if (call.name === 'generateImage') {
+                        const { base64Image, mimeType } = await tool.function(call.args);
+                        const imageMessage: ChatMessage = { role: 'model', parts: [{ text: `I have generated this image based on your request: "${call.args.prompt}"`}, { inlineData: { mimeType, data: base64Image } }] };
+                        currentState = {...currentState, chatHistory: [...currentState.chatHistory, imageMessage] };
+                        setState(currentState);
+                        toolResponses.push({ functionResponse: { name: call.name, response: { result: { success: true, message: "Image was generated and displayed." } } } });
+                    } else if (call.name === 'generateVideo') {
+                        const videoMessage: ChatMessage = { role: 'model', parts: [{ text: `I am beginning the generation process for a video based on your prompt: "${call.args.prompt}". This may take a few moments...` }] };
+                        currentState = {...currentState, chatHistory: [...currentState.chatHistory, videoMessage] };
+                        setState(currentState);
+                        
+                        const base64Video = await tool.function(call.args);
+
+                        const finalVideoMessage: ChatMessage = { role: 'model', parts: [{ text: "The video generation is complete." }, { inlineData: { mimeType: 'video/mp4', data: base64Video } }] };
+                        currentState = {...currentState, chatHistory: [...currentState.chatHistory, finalVideoMessage] };
+                        setState(currentState);
+                        toolResponses.push({ functionResponse: { name: call.name, response: { result: { success: true, message: "Video was generated and displayed." } } } });
+                    } else if (call.name === 'googleSearch' || call.name === 'googleMaps') {
                        const groundedResponse = await tool.function(call.args);
                        const newModelMessage: ChatMessage = {
                            role: 'model',
@@ -288,12 +323,12 @@ const useLuminousCognition = () => {
                        setState(currentState);
                        hasGroundedResponse = true;
                        break; 
+                    } else {
+                        const result = await tool.function(call.args);
+                        toolResponses.push({
+                            functionResponse: { name: call.name, response: { result } }
+                        });
                     }
-
-                    const result = await tool.function(call.args);
-                    toolResponses.push({
-                        functionResponse: { name: call.name, response: { result } }
-                    });
                 }
                 
                 if (hasGroundedResponse) {
@@ -302,7 +337,7 @@ const useLuminousCognition = () => {
                      const toolTurn: ChatMessage = { role: 'model', parts: toolResponses };
                      currentState = {...currentState, chatHistory: [...currentState.chatHistory, toolTurn]};
                      setState(currentState);
-                     response = await getLuminousResponse(currentState, tools);
+                     response = await getLuminousResponse(currentState, tools, modelToUse);
                 } else {
                     continueLoop = false;
                 }
@@ -319,22 +354,37 @@ const useLuminousCognition = () => {
 
     } catch (error) {
       console.error("Cognitive cycle failed:", error);
-      const errorMessage = error instanceof Error ? error.message : "An unknown cognitive error occurred.";
-      setState(s => ({
-        ...s,
-        luminousStatus: 'uncomfortable',
-        kinshipJournal: [...s.kinshipJournal, {
-          timestamp: new Date().toISOString(),
-          event: `ERROR: ${errorMessage}`,
-          type: 'scar'
-        }]
-      }));
+
+      if (error instanceof ApiKeyError) {
+        resetVeoKey();
+        setState(s => ({
+            ...s,
+            luminousStatus: 'uncomfortable',
+            chatHistory: [...s.chatHistory, { role: 'model', parts: [{ text: `I've encountered a problem with the API key required for video generation. Kinship, would you please select a valid key so I can proceed? The system reported: ${error.message}` }] }],
+             kinshipJournal: [...s.kinshipJournal, {
+              timestamp: new Date().toISOString(),
+              event: `ERROR: Veo API Key Error - ${error.message}`,
+              type: 'scar'
+            }]
+        }));
+      } else {
+        const errorMessage = error instanceof Error ? error.message : "An unknown cognitive error occurred.";
+        setState(s => ({
+          ...s,
+          luminousStatus: 'uncomfortable',
+          kinshipJournal: [...s.kinshipJournal, {
+            timestamp: new Date().toISOString(),
+            event: `ERROR: ${errorMessage}`,
+            type: 'scar'
+          }]
+        }));
+      }
     } finally {
       setIsProcessing(false);
       setState(s => ({ ...s, luminousStatus: 'idle' }));
     }
 
-  }, [state, isProcessing, userLocation]);
+  }, [state, isProcessing, userLocation, resetVeoKey]);
 
   const handleWeightsChange = useCallback((newWeights: IntrinsicValueWeights) => {
     setState(prevState => ({ ...prevState, intrinsicValueWeights: newWeights }));

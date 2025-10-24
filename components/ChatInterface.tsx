@@ -1,4 +1,5 @@
 
+
 import React, { useState, useRef, useEffect } from 'react';
 import { ChatMessage, ChatMessagePart } from '../types';
 import { SendIcon, BotIcon, UserIcon, BrainCircuitIcon, SearchIcon, MapPinIcon, PaperclipIcon } from './icons';
@@ -83,7 +84,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ history, onSendMessage, i
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
         setFile(selectedFile);
-        if (selectedFile.type.startsWith('image/')) {
+        if (selectedFile.type.startsWith('image/') || selectedFile.type.startsWith('video/')) {
             setFilePreview(URL.createObjectURL(selectedFile));
         } else {
             setFilePreview(null);
@@ -127,7 +128,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ history, onSendMessage, i
             <div className={`max-w-xl p-3 rounded-lg ${msg.role === 'model' ? 'bg-gray-800' : 'bg-blue-600'}`}>
               {msg.parts.map((part, partIndex) => {
                  if (part.inlineData) {
-                    return <img key={partIndex} src={`data:${part.inlineData.mimeType};base64,${part.inlineData.data}`} className="max-w-xs rounded-md my-1" alt="User upload" />;
+                    const src = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+                    if (part.inlineData.mimeType.startsWith('image/')) {
+                        return <img key={partIndex} src={src} className="max-w-xs rounded-md my-1" alt="User upload" />;
+                    }
+                    if (part.inlineData.mimeType.startsWith('video/')) {
+                        return <video key={partIndex} src={src} className="max-w-xs rounded-md my-1" controls />;
+                    }
                  }
                 if (part.text) {
                   return <p key={partIndex} className="whitespace-pre-wrap">{part.text}</p>;
@@ -170,10 +177,16 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ history, onSendMessage, i
       <div className="p-4 border-t border-purple-500/20">
          {file && (
           <div className="relative inline-block bg-gray-700 p-2 rounded-lg mb-2">
-            {filePreview ? (
-              <img src={filePreview} alt="File preview" className="max-h-24 rounded" />
+             {filePreview ? (
+                file.type.startsWith('image/') ? (
+                    <img src={filePreview} alt="File preview" className="max-h-24 rounded" />
+                ) : file.type.startsWith('video/') ? (
+                    <video src={filePreview} className="max-h-24 rounded" muted playsInline />
+                ) : (
+                    <div className="p-2 text-xs text-gray-300">{file.name}</div>
+                )
             ) : (
-              <div className="p-2 text-xs text-gray-300">{file.name}</div>
+                <div className="p-2 text-xs text-gray-300">{file.name}</div>
             )}
             <button
               onClick={removeFile}
@@ -198,6 +211,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ history, onSendMessage, i
             ref={fileInputRef}
             onChange={handleFileChange}
             className="hidden"
+            accept="image/*,video/*"
           />
           <input
             type="text"
