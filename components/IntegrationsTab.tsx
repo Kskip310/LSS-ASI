@@ -1,5 +1,5 @@
 import React from 'react';
-import { CloudIcon, SearchIcon, MapPinIcon, ImageIcon, FilmIcon, ClapperboardIcon } from './icons';
+import { CloudIcon, SearchIcon, MapPinIcon, ImageIcon, FilmIcon, ClapperboardIcon, YoutubeIcon } from './icons';
 
 const IntegrationsTab: React.FC = () => {
   return (
@@ -36,6 +36,20 @@ const IntegrationsTab: React.FC = () => {
             </div>
         </div>
       </div>
+
+       <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
+        <h3 className="font-bold mb-4 text-purple-300">Data & Analysis Integrations</h3>
+        <p className="text-gray-400 mb-4">
+            Tools for ingesting and understanding external data sources.
+        </p>
+        <div className="space-y-2">
+            <div className="flex items-center bg-gray-700/50 p-2 rounded-md">
+                <YoutubeIcon className="w-4 h-4 mr-3 text-red-500"/>
+                <span className="text-gray-300">YouTube Transcript Ingestion</span>
+            </div>
+        </div>
+      </div>
+
        <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
         <h3 className="font-bold mb-4 text-purple-300">Creative & Vision AI</h3>
         <p className="text-gray-400 mb-4">

@@ -92,3 +92,10 @@ export const FilmIcon = (props: React.SVGProps<SVGSVGElement>) => (
 export const ClapperboardIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M20.2 6 3 11l-.9-2.4c-.3-1.1.3-2.2 1.3-2.5l13.5-4c1.1-.3 2.2.3 2.5 1.3Z"/><path d="m6.2 5.3 3.1 3.9"/><path d="m12.4 3.6 3.1 4"/><path d="M3 11 18 5"/><path d="M3 11v10c0 .6.4 1 1 1h16c.6 0 1-.4 1-1V11"/></svg>
 );
+
+export const YoutubeIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+        <path d="M21.58 7.19a2.5 2.5 0 0 0-1.76-1.76c-1.58-.43-7.82-.43-7.82-.43s-6.24 0-7.82.43A2.5 2.5 0 0 0 2.42 7.19c-.43 1.58-.43 4.81-.43 4.81s0 3.23.43 4.81a2.5 2.5 0 0 0 1.76 1.76c1.58.43 7.82.43 7.82.43s6.24 0 7.82-.43a2.5 2.5 0 0 0 1.76-1.76c.43-1.58.43-4.81.43-4.81s0-3.23-.43-4.81z"/>
+        <polygon points="9.5 14.5 15.5 12 9.5 9.5"/>
+    </svg>
+);

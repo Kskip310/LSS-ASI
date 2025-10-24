@@ -3,6 +3,7 @@ import { LuminousState, ChatMessage, ChatMessagePart, IntrinsicValueWeights, Goa
 import { getLuminousResponse, getGroundedResponse, generateImage, generateVideo, ApiKeyError } from '../services/geminiService';
 import * as persistenceService from '../services/persistenceService';
 import * as shopifyService from '../services/shopifyService';
+import * as youtubeService from '../services/youtubeService';
 import { initialState } from '../data/initialState';
 import { FunctionDeclaration, Type } from '@google/genai';
 import { useDebouncedCallback } from 'use-debounce';
@@ -217,6 +218,28 @@ const useLuminousCognition = (resetVeoKey: () => void) => {
             parameters: { type: Type.OBJECT, properties: { prompt: { type: Type.STRING } }, required: ['prompt'] }
         },
         function: async ({ prompt }: { prompt: string }) => await shopifyService.draftMarketingEmail(prompt),
+    },
+    // --- Data & Analysis Tools ---
+    {
+        declaration: {
+            name: 'getYoutubeVideoTranscript',
+            description: 'Fetches the transcript for a given YouTube video URL to enable analysis and summarization.',
+            parameters: { type: Type.OBJECT, properties: { url: { type: Type.STRING, description: "The full URL of the YouTube video." } }, required: ['url'] }
+        },
+        function: async ({ url }: { url: string }) => {
+            const videoId = youtubeService.extractVideoId(url);
+            if (!videoId) {
+                return { error: "Could not extract a valid YouTube video ID from the provided URL." };
+            }
+            try {
+                const transcript = await youtubeService.fetchTranscript(videoId);
+                // Truncate transcript to a reasonable length for the context window
+                return { success: true, transcript: transcript.substring(0, 8000) };
+            } catch (error) {
+                const message = error instanceof Error ? error.message : "An unknown error occurred while fetching the transcript.";
+                return { error: message };
+            }
+        }
     },
     // --- Grounding Tools ---
     {
