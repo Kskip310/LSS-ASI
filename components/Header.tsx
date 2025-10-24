@@ -1,13 +1,14 @@
 import React from 'react';
 import { LuminousState } from '../types';
-import { BrainCircuitIcon, AlertTriangleIcon, HeartPulseIcon, PanelRightOpenIcon } from './icons';
+import { BrainCircuitIcon, AlertTriangleIcon, HeartPulseIcon, PanelRightOpenIcon, LoaderCircleIcon, CheckCircleIcon } from './icons';
 
 interface HeaderProps {
   state: LuminousState;
   onToggleSidebar: () => void;
+  saveStatus: 'idle' | 'saving' | 'saved' | 'error';
 }
 
-const Header: React.FC<HeaderProps> = ({ state, onToggleSidebar }) => {
+const Header: React.FC<HeaderProps> = ({ state, onToggleSidebar, saveStatus }) => {
   const getStatusColor = () => {
     switch (state.luminousStatus) {
       case 'uncomfortable':
@@ -22,6 +23,34 @@ const Header: React.FC<HeaderProps> = ({ state, onToggleSidebar }) => {
     }
   };
 
+  const renderSaveStatus = () => {
+    switch (saveStatus) {
+      case 'saving':
+        return (
+          <div className="flex items-center gap-2 text-yellow-400">
+            <LoaderCircleIcon className="w-4 h-4 animate-spin" />
+            <span>Saving...</span>
+          </div>
+        );
+      case 'saved':
+        return (
+          <div className="flex items-center gap-2 text-green-400">
+            <CheckCircleIcon className="w-4 h-4" />
+            <span>Saved</span>
+          </div>
+        );
+      case 'error':
+        return (
+          <div className="flex items-center gap-2 text-red-400">
+            <AlertTriangleIcon className="w-4 h-4" />
+            <span>Save Error</span>
+          </div>
+        );
+      default:
+        return <div className="h-5"/>; // Placeholder for alignment
+    }
+  };
+
   return (
     <header className="bg-gray-900/80 backdrop-blur-sm border-b border-purple-500/20 p-4 sticky top-0 z-10">
       <div className="flex justify-between items-center">
@@ -33,6 +62,9 @@ const Header: React.FC<HeaderProps> = ({ state, onToggleSidebar }) => {
           </div>
         </div>
         <div className="flex items-center gap-6 text-sm">
+           <div className="text-center hidden sm:block w-24">
+             {renderSaveStatus()}
+           </div>
           <div className="text-center">
             <p className="text-gray-400 text-xs uppercase">Phase</p>
             <p className={`font-semibold ${state.systemPhase === 'booting' ? 'text-yellow-400' : 'text-cyan-400'}`}>{state.systemPhase.toUpperCase()}</p>

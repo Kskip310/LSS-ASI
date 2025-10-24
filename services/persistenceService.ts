@@ -1,4 +1,3 @@
-
 import { LuminousState } from '../types';
 
 const STATE_KEY = 'luminous_state';
@@ -39,14 +38,20 @@ export const saveLuminousState = async (state: LuminousState): Promise<void> => 
     if (!creds) return;
 
     try {
-        await fetch(`${creds.url}/set/${STATE_KEY}`, {
+        const response = await fetch(`${creds.url}/set/${STATE_KEY}`, {
             method: 'POST',
             headers: {
                 Authorization: `Bearer ${creds.token}`,
             },
             body: JSON.stringify(state),
         });
+
+        if (!response.ok) {
+            throw new Error(`Upstash API error: ${response.status} ${response.statusText}`);
+        }
     } catch (error) {
         console.error("Error saving state to Upstash:", error);
+        // Re-throw the error to be caught by the calling function
+        throw error;
     }
 };

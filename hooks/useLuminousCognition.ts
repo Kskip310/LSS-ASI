@@ -1,4 +1,3 @@
-
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { LuminousState, ChatMessage, ChatMessagePart, IntrinsicValueWeights, GoalStatus } from '../types';
 import { getLuminousResponse, getGroundedResponse } from '../services/geminiService';
@@ -8,35 +7,62 @@ import { initialState } from '../data/initialState';
 import { FunctionDeclaration, Type } from '@google/genai';
 import { useDebouncedCallback } from 'use-debounce';
 
+type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+
 const useLuminousCognition = () => {
   const [state, setState] = useState<LuminousState>(initialState);
-  const [isReady, setIsReady] = useState(false); // New loading state
+  const [isReady, setIsReady] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const timersRef = useRef<{ energy?: ReturnType<typeof setInterval>, reflection?: ReturnType<typeof setInterval> }>({});
   const [userLocation, setUserLocation] = useState<{latitude: number, longitude: number} | null>(null);
 
-  // Load state from Upstash on initial mount
   useEffect(() => {
     const loadState = async () => {
       const savedState = await persistenceService.getLuminousState();
       if (savedState) {
         setState(savedState);
+      } else {
+        // On first load, save the initial state
+        await persistenceService.saveLuminousState(initialState);
       }
+      setSaveStatus('saved');
       setIsReady(true);
     };
     loadState();
   }, []);
 
-  const debouncedSaveState = useDebouncedCallback((currentState: LuminousState) => {
-    persistenceService.saveLuminousState(currentState);
-  }, 1000);
+  const saveStateToPersistence = async (currentState: LuminousState) => {
+    setSaveStatus('saving');
+    try {
+      await persistenceService.saveLuminousState(currentState);
+      setSaveStatus('saved');
+    } catch (error) {
+      console.error("Failed to save state:", error);
+      setSaveStatus('error');
+    }
+  };
 
-  // Save state to Upstash whenever it changes
+  const debouncedSaveState = useDebouncedCallback(saveStateToPersistence, 1000);
+
   useEffect(() => {
     if (isReady) {
       debouncedSaveState(state);
     }
   }, [state, isReady, debouncedSaveState]);
+
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (debouncedSaveState.isPending()) {
+        debouncedSaveState.flush();
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      debouncedSaveState.flush();
+    };
+  }, [debouncedSaveState]);
 
   useEffect(() => {
     if (!navigator.geolocation) {
@@ -306,6 +332,7 @@ const useLuminousCognition = () => {
     state,
     isReady,
     isProcessing,
+    saveStatus,
     processUserMessage,
     handleWeightsChange,
   };

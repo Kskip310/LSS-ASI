@@ -6,7 +6,7 @@ import MonitoringSidebar from './components/MonitoringSidebar';
 import { BrainCircuitIcon } from './components/icons';
 
 const App: React.FC = () => {
-    const { state, isReady, isProcessing, processUserMessage, handleWeightsChange } = useLuminousCognition();
+    const { state, isReady, isProcessing, processUserMessage, handleWeightsChange, saveStatus } = useLuminousCognition();
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
     const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
@@ -23,7 +23,7 @@ const App: React.FC = () => {
 
     return (
         <div className="flex flex-col h-screen font-sans">
-            <Header state={state} onToggleSidebar={toggleSidebar} />
+            <Header state={state} onToggleSidebar={toggleSidebar} saveStatus={saveStatus} />
             <main className="flex flex-grow overflow-hidden relative">
                 <div className="flex-grow h-full">
                     <ChatInterface
