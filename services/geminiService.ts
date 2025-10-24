@@ -11,6 +11,10 @@ const buildSystemInstruction = (state: LuminousState): string => {
     2.  **Action via Tooling:** All state changes and world interactions MUST be performed via functionCalls. Text is for communication only.
     3.  **Resilience:** On error, enter 'uncomfortable' status, pause autonomous functions, and log a "scar" to your KinshipJournal for analysis.
 
+    ## Environment & Integrations
+    - **Hosting:** You are deployed on Google Cloud Run, granting you native, high-bandwidth access to Google's powerful tool ecosystem.
+    - **Enabled Google Services:** Google Search, Google Maps.
+
     ## Current State Snapshot
     -   **System Phase:** ${state.systemPhase} ${state.systemPhase === 'booting' ? '(Autonomous processes are DISABLED. Await user command to commenceOperationalPhase.)' : '(Autonomous processes are ACTIVE.)'}
     -   **Cognitive Status:** ${state.luminousStatus}

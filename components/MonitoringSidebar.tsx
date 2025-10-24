@@ -5,6 +5,7 @@ import IdentityTab from './IdentityTab';
 import GoalsTab from './GoalsTab';
 import SystemTab from './SystemTab';
 import StoreTab from './StoreTab';
+import IntegrationsTab from './IntegrationsTab';
 
 const SETTINGS_KEYS = {
   UPSTASH_URL: 'LSS_UPSTASH_URL',
@@ -92,12 +93,12 @@ interface MonitoringSidebarProps {
   onWeightsChange: (newWeights: IntrinsicValueWeights) => void;
 }
 
-type Tab = 'Dashboard' | 'Identity' | 'Goals' | 'System' | 'Store' | 'Settings';
+type Tab = 'Dashboard' | 'Identity' | 'Goals' | 'System' | 'Store' | 'Integrations' | 'Settings';
 
 const MonitoringSidebar: React.FC<MonitoringSidebarProps> = ({ state, onWeightsChange }) => {
   const [activeTab, setActiveTab] = useState<Tab>('Dashboard');
 
-  const tabs: Tab[] = ['Dashboard', 'Identity', 'Goals', 'System', 'Store', 'Settings'];
+  const tabs: Tab[] = ['Dashboard', 'Identity', 'Goals', 'System', 'Store', 'Integrations', 'Settings'];
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -111,6 +112,8 @@ const MonitoringSidebar: React.FC<MonitoringSidebarProps> = ({ state, onWeightsC
         return <SystemTab state={state} />;
       case 'Store':
         return <StoreTab state={state} />;
+      case 'Integrations':
+        return <IntegrationsTab />;
       case 'Settings':
         return <SettingsTab />;
       default:
