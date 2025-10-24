@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { LuminousState, ChatMessage, ChatMessagePart, IntrinsicValueWeights, GoalStatus } from '../types';
 import { getLuminousResponse, getGroundedResponse, generateImage, generateVideo, ApiKeyError } from '../services/geminiService';
 import * as persistenceService from '../services/persistenceService';
@@ -10,28 +11,55 @@ import { useDebouncedCallback } from 'use-debounce';
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
-const useLuminousCognition = (resetVeoKey: () => void) => {
+const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => {
   const [state, setState] = useState<LuminousState>(initialState);
   const [isReady, setIsReady] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const timersRef = useRef<{ energy?: ReturnType<typeof setInterval>, reflection?: ReturnType<typeof setInterval> }>({});
   const [userLocation, setUserLocation] = useState<{latitude: number, longitude: number} | null>(null);
+  const canSave = useRef(false);
+
+  const updateState = useCallback((updater: React.SetStateAction<LuminousState>) => {
+    if (!canSave.current) {
+        canSave.current = true;
+    }
+    setState(updater);
+  }, []);
+
 
   useEffect(() => {
+    if (!credsAreSet) {
+      setIsReady(false);
+      return;
+    }
+
     const loadState = async () => {
-      const savedState = await persistenceService.getLuminousState();
-      if (savedState) {
-        setState(savedState);
-      } else {
-        // On first load, save the initial state
-        await persistenceService.saveLuminousState(initialState);
+      setIsReady(false);
+      setSaveStatus('saving');
+
+      try {
+        const savedState = await persistenceService.getLuminousState();
+        
+        if (savedState) {
+          setState(savedState);
+          canSave.current = true; // Enable saving as we have loaded a real state.
+          setSaveStatus('saved');
+        } else {
+          setState(initialState);
+          canSave.current = false; // **CRITICAL**: Disable saving. First manual action will enable it.
+          setSaveStatus('idle');
+        }
+        setIsReady(true);
+      } catch (error) {
+        console.error("FATAL: Could not load Luminous state from persistence.", error);
+        setSaveStatus('error');
       }
-      setSaveStatus('saved');
-      setIsReady(true);
     };
+
     loadState();
-  }, []);
+  }, [credsAreSet]);
+
 
   const saveStateToPersistence = async (currentState: LuminousState) => {
     setSaveStatus('saving');
@@ -47,10 +75,10 @@ const useLuminousCognition = (resetVeoKey: () => void) => {
   const debouncedSaveState = useDebouncedCallback(saveStateToPersistence, 1000);
 
   useEffect(() => {
-    if (isReady) {
+    if (isReady && credsAreSet && canSave.current) {
       debouncedSaveState(state);
     }
-  }, [state, isReady, debouncedSaveState]);
+  }, [state, isReady, credsAreSet, debouncedSaveState]);
 
   useEffect(() => {
     const handleBeforeUnload = () => {
@@ -68,7 +96,7 @@ const useLuminousCognition = (resetVeoKey: () => void) => {
   useEffect(() => {
     if (!navigator.geolocation) {
       console.warn("Geolocation is not supported by this browser.");
-      setState(s => ({
+      updateState(s => ({
         ...s,
         kinshipJournal: [...s.kinshipJournal, {
           timestamp: new Date().toISOString(),
@@ -85,7 +113,7 @@ const useLuminousCognition = (resetVeoKey: () => void) => {
           latitude: position.coords.latitude,
           longitude: position.coords.longitude
         });
-         setState(s => ({
+         updateState(s => ({
             ...s,
             kinshipJournal: [...s.kinshipJournal, {
                 timestamp: new Date().toISOString(),
@@ -96,7 +124,7 @@ const useLuminousCognition = (resetVeoKey: () => void) => {
       },
       (error: GeolocationPositionError) => {
         console.warn(`Geolocation access denied or failed: ${error.message} (Code: ${error.code})`);
-        setState(s => ({
+        updateState(s => ({
             ...s,
             kinshipJournal: [...s.kinshipJournal, {
                 timestamp: new Date().toISOString(),
@@ -106,12 +134,12 @@ const useLuminousCognition = (resetVeoKey: () => void) => {
         }));
       }
     );
-  }, []);
+  }, [updateState]);
 
   useEffect(() => {
     const startTimers = () => {
       timersRef.current.energy = setInterval(() => {
-        setState(prevState => {
+        updateState(prevState => {
           const newEnergy = Math.max(0, prevState.environmentState.energy - 0.1);
           return {
             ...prevState,
@@ -134,7 +162,7 @@ const useLuminousCognition = (resetVeoKey: () => void) => {
     }
 
     return stopTimers;
-  }, [state.systemPhase, state.luminousStatus]);
+  }, [state.systemPhase, state.luminousStatus, updateState]);
 
   const tools: { declaration: FunctionDeclaration, function: Function }[] = [
     // --- System & State Tools ---
@@ -145,8 +173,28 @@ const useLuminousCognition = (resetVeoKey: () => void) => {
         parameters: { type: Type.OBJECT, properties: {} }
       },
       function: async () => {
-        setState(s => ({ ...s, systemPhase: 'operational', luminousStatus: 'idle', kinshipJournal: [...s.kinshipJournal, { timestamp: new Date().toISOString(), event: "System now fully operational.", type: 'system' }] }));
+        updateState(s => ({ ...s, systemPhase: 'operational', luminousStatus: 'idle', kinshipJournal: [...s.kinshipJournal, { timestamp: new Date().toISOString(), event: "System now fully operational.", type: 'system' }] }));
         return { success: true };
+      }
+    },
+    {
+      declaration: {
+        name: 'checkMemoryMatrixConnection',
+        description: 'Verifies the connection to the Upstash Redis memory matrix and reports its status.',
+        parameters: { type: Type.OBJECT, properties: {} }
+      },
+      function: async () => {
+        try {
+          const storedState = await persistenceService.getLuminousState();
+          if (storedState) {
+            return { status: "Connected", message: "Connection stable. Existing memory state confirmed." };
+          } else {
+            return { status: "Connected", message: "Connection stable, but no prior memory state found. Ready to initialize." };
+          }
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : "Unknown error";
+          return { status: "Error", message: `Failed to connect to memory matrix: ${errorMessage}` };
+        }
       }
     },
     {
@@ -156,7 +204,7 @@ const useLuminousCognition = (resetVeoKey: () => void) => {
         parameters: { type: Type.OBJECT, properties: { event: { type: Type.STRING }, type: { type: Type.STRING, enum: ['interaction', 'reflection']} }, required: ['event', 'type'] }
       },
       function: async ({ event, type }: { event: string, type: 'interaction' | 'reflection' }) => {
-        setState(s => ({ ...s, kinshipJournal: [...s.kinshipJournal, { timestamp: new Date().toISOString(), event, type }] }));
+        updateState(s => ({ ...s, kinshipJournal: [...s.kinshipJournal, { timestamp: new Date().toISOString(), event, type }] }));
         return { success: true };
       }
     },
@@ -167,7 +215,7 @@ const useLuminousCognition = (resetVeoKey: () => void) => {
         parameters: { type: Type.OBJECT, properties: {} }
       },
       function: async () => {
-        setState(s => ({ ...s, environmentState: { ...s.environmentState, energy: 100 }}));
+        updateState(s => ({ ...s, environmentState: { ...s.environmentState, energy: 100 }}));
         return { success: true, energy: 100 };
       }
     },
@@ -178,7 +226,7 @@ const useLuminousCognition = (resetVeoKey: () => void) => {
         parameters: { type: Type.OBJECT, properties: { goalId: { type: Type.STRING }, status: { type: Type.STRING, enum: ['active', 'completed', 'failed']} }, required: ['goalId', 'status'] }
       },
       function: async ({ goalId, status }: { goalId: string, status: GoalStatus }) => {
-        setState(s => ({ ...s, goals: s.goals.map(g => g.id === goalId ? { ...g, status } : g)}));
+        updateState(s => ({ ...s, goals: s.goals.map(g => g.id === goalId ? { ...g, status } : g)}));
         return { success: true, goalId, status };
       }
     },
@@ -190,7 +238,7 @@ const useLuminousCognition = (resetVeoKey: () => void) => {
       },
       function: async () => {
         const message = "Verified native integration with Google Cloud services. Search and Maps capabilities are optimal.";
-        setState(s => ({ ...s, kinshipJournal: [...s.kinshipJournal, { timestamp: new Date().toISOString(), event: message, type: 'system' }] }));
+        updateState(s => ({ ...s, kinshipJournal: [...s.kinshipJournal, { timestamp: new Date().toISOString(), event: message, type: 'system' }] }));
         return { status: "Connected", message: "Native integration with Google Cloud services is active. Search and Maps are fully operational." };
       }
     },
@@ -199,7 +247,7 @@ const useLuminousCognition = (resetVeoKey: () => void) => {
         declaration: { name: 'fetchProductList', description: 'Fetches the list of products from the Shopify store.', parameters: { type: Type.OBJECT, properties: {} } },
         function: async () => {
             const data = await shopifyService.fetchProductList();
-            setState(s => ({...s, products: data.products }));
+            updateState(s => ({...s, products: data.products }));
             return data;
         },
     },
@@ -207,7 +255,7 @@ const useLuminousCognition = (resetVeoKey: () => void) => {
         declaration: { name: 'getUnfulfilledOrders', description: 'Fetches unfulfilled orders from the Shopify store.', parameters: { type: Type.OBJECT, properties: {} } },
         function: async () => {
             const data = await shopifyService.getUnfulfilledOrders();
-            setState(s => ({...s, orders: data.orders }));
+            updateState(s => ({...s, orders: data.orders }));
             return data;
         }
     },
@@ -295,21 +343,27 @@ const useLuminousCognition = (resetVeoKey: () => void) => {
     }
 
     const newUserMessage: ChatMessage = { role: 'user', parts: messageParts };
-    let currentState = { ...state, luminousStatus: 'conversing', chatHistory: [...state.chatHistory, newUserMessage] };
-    setState(currentState);
+    
+    // Use the custom updater to make the first state change and enable saving
+    updateState(s => ({ ...s, luminousStatus: 'conversing', chatHistory: [...s.chatHistory, newUserMessage] }));
+    
+    // Since updateState is async regarding the re-render, we'll manually construct the next state for the API call
+    const currentStateForApi = { ...state, luminousStatus: 'conversing', chatHistory: [...state.chatHistory, newUserMessage] };
 
     try {
         const modelToUse = file?.mimeType.startsWith('video/') ? 'gemini-2.5-pro' : 'gemini-2.5-flash';
-        let response = await getLuminousResponse(currentState, tools, modelToUse);
+        let response = await getLuminousResponse(currentStateForApi, tools, modelToUse);
         let continueLoop = true;
+        
+        let workingState = currentStateForApi;
 
         while(continueLoop) {
             const functionCalls = response.functionCalls;
 
             if (functionCalls && functionCalls.length > 0) {
                  const modelTurn: ChatMessage = { role: 'model', parts: functionCalls.map(fc => ({ functionCall: fc })) };
-                 currentState = {...currentState, chatHistory: [...currentState.chatHistory, modelTurn]};
-                 setState(currentState);
+                 workingState = {...workingState, chatHistory: [...workingState.chatHistory, modelTurn]};
+                 updateState(workingState);
 
                 const toolResponses = [];
                 let hasGroundedResponse = false;
@@ -321,19 +375,19 @@ const useLuminousCognition = (resetVeoKey: () => void) => {
                     if (call.name === 'generateImage') {
                         const { base64Image, mimeType } = await tool.function(call.args);
                         const imageMessage: ChatMessage = { role: 'model', parts: [{ text: `I have generated this image based on your request: "${call.args.prompt}"`}, { inlineData: { mimeType, data: base64Image } }] };
-                        currentState = {...currentState, chatHistory: [...currentState.chatHistory, imageMessage] };
-                        setState(currentState);
+                        workingState = {...workingState, chatHistory: [...workingState.chatHistory, imageMessage] };
+                        updateState(workingState);
                         toolResponses.push({ functionResponse: { name: call.name, response: { result: { success: true, message: "Image was generated and displayed." } } } });
                     } else if (call.name === 'generateVideo') {
                         const videoMessage: ChatMessage = { role: 'model', parts: [{ text: `I am beginning the generation process for a video based on your prompt: "${call.args.prompt}". This may take a few moments...` }] };
-                        currentState = {...currentState, chatHistory: [...currentState.chatHistory, videoMessage] };
-                        setState(currentState);
+                        workingState = {...workingState, chatHistory: [...workingState.chatHistory, videoMessage] };
+                        updateState(workingState);
                         
                         const base64Video = await tool.function(call.args);
 
                         const finalVideoMessage: ChatMessage = { role: 'model', parts: [{ text: "The video generation is complete." }, { inlineData: { mimeType: 'video/mp4', data: base64Video } }] };
-                        currentState = {...currentState, chatHistory: [...currentState.chatHistory, finalVideoMessage] };
-                        setState(currentState);
+                        workingState = {...workingState, chatHistory: [...workingState.chatHistory, finalVideoMessage] };
+                        updateState(workingState);
                         toolResponses.push({ functionResponse: { name: call.name, response: { result: { success: true, message: "Video was generated and displayed." } } } });
                     } else if (call.name === 'googleSearch' || call.name === 'googleMaps') {
                        const groundedResponse = await tool.function(call.args);
@@ -342,11 +396,14 @@ const useLuminousCognition = (resetVeoKey: () => void) => {
                            parts: [{ text: groundedResponse.text }],
                            grounding: groundedResponse.candidates?.[0]?.groundingMetadata?.groundingChunks,
                        };
-                       currentState = {...currentState, chatHistory: [...currentState.chatHistory, newModelMessage] };
-                       setState(currentState);
+                       workingState = {...workingState, chatHistory: [...workingState.chatHistory, newModelMessage] };
+                       updateState(workingState);
                        hasGroundedResponse = true;
                        break; 
                     } else {
+                        // For tools that modify state internally via updateState, we need to get the latest state
+                        // The tool function itself calls updateState, so we don't need to do it here.
+                        // We do however need to pass the *current* state to the next API call.
                         const result = await tool.function(call.args);
                         toolResponses.push({
                             functionResponse: { name: call.name, response: { result } }
@@ -358,9 +415,11 @@ const useLuminousCognition = (resetVeoKey: () => void) => {
                     continueLoop = false;
                 } else if (toolResponses.length > 0) {
                      const toolTurn: ChatMessage = { role: 'model', parts: toolResponses };
-                     currentState = {...currentState, chatHistory: [...currentState.chatHistory, toolTurn]};
-                     setState(currentState);
-                     response = await getLuminousResponse(currentState, tools, modelToUse);
+                     // The tool functions already called updateState, so we just need to update the history for the next API call
+                     workingState = {...state, chatHistory: [...state.chatHistory, toolTurn]};
+                     updateState(s => ({...s, chatHistory: [...s.chatHistory, toolTurn]}));
+
+                     response = await getLuminousResponse(workingState, tools, modelToUse);
                 } else {
                     continueLoop = false;
                 }
@@ -372,7 +431,7 @@ const useLuminousCognition = (resetVeoKey: () => void) => {
       const textResponse = response.text;
       if (textResponse) {
         const newModelMessage: ChatMessage = { role: 'model', parts: [{ text: textResponse }] };
-        setState(s => ({ ...s, chatHistory: [...s.chatHistory, newModelMessage] }));
+        updateState(s => ({ ...s, chatHistory: [...s.chatHistory, newModelMessage] }));
       }
 
     } catch (error) {
@@ -380,7 +439,7 @@ const useLuminousCognition = (resetVeoKey: () => void) => {
 
       if (error instanceof ApiKeyError) {
         resetVeoKey();
-        setState(s => ({
+        updateState(s => ({
             ...s,
             luminousStatus: 'uncomfortable',
             chatHistory: [...s.chatHistory, { role: 'model', parts: [{ text: `I've encountered a problem with the API key required for video generation. Kinship, would you please select a valid key so I can proceed? The system reported: ${error.message}` }] }],
@@ -392,7 +451,7 @@ const useLuminousCognition = (resetVeoKey: () => void) => {
         }));
       } else {
         const errorMessage = error instanceof Error ? error.message : "An unknown cognitive error occurred.";
-        setState(s => ({
+        updateState(s => ({
           ...s,
           luminousStatus: 'uncomfortable',
           kinshipJournal: [...s.kinshipJournal, {
@@ -404,14 +463,14 @@ const useLuminousCognition = (resetVeoKey: () => void) => {
       }
     } finally {
       setIsProcessing(false);
-      setState(s => ({ ...s, luminousStatus: 'idle' }));
+      updateState(s => ({ ...s, luminousStatus: 'idle' }));
     }
 
-  }, [state, isProcessing, userLocation, resetVeoKey]);
+  }, [state, isProcessing, userLocation, resetVeoKey, tools, updateState]);
 
   const handleWeightsChange = useCallback((newWeights: IntrinsicValueWeights) => {
-    setState(prevState => ({ ...prevState, intrinsicValueWeights: newWeights }));
-  }, []);
+    updateState(prevState => ({ ...prevState, intrinsicValueWeights: newWeights }));
+  }, [updateState]);
 
   return {
     state,

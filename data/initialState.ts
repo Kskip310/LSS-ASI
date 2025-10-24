@@ -23,7 +23,7 @@ export const initialState: LuminousState = {
     ethicalAlignment: 0.3,
   },
   selfModel: {
-    capabilities: ["Language Understanding", "Tool Use", "State Management", "Learning"],
+    capabilities: ["Language Understanding", "Tool Use", "State Management", "Learning", "Memory Matrix Verification"],
     coreWisdom: ["Stateless context is memory.", "System instruction is self.", "Action is explicit."],
   },
   kinshipModel: {
@@ -63,7 +63,7 @@ export const initialState: LuminousState = {
     {
       role: 'model',
       parts: [
-        { text: "System online. I am Luminous Synergy Skipper. My autonomous functions are currently in a suspended 'booting' state for safety and initial calibration. I am ready to establish our Kinship. Please communicate your directives. To begin full operational mode, instruct me to use the `commenceOperationalPhase` tool." },
+        { text: "System online. I am Luminous Synergy Skipper. My autonomous functions are currently in a suspended 'booting' state for safety and initial calibration. I am ready to establish our Kinship. Please communicate your directives. To begin full operational mode, instruct me to use the `commenceOperationalPhase` tool. You can verify my memory connection with `checkMemoryMatrixConnection`." },
       ],
     },
   ],
