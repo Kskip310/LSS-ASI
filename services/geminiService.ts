@@ -202,7 +202,8 @@ export const generateVideo = async (prompt: string, aspectRatio: '16:9' | '9:16'
 };
 
 export const generateSpeech = async (text: string): Promise<string> => {
-    const genAI = createAi();
+    // TTS requires a different initialization as per documentation examples.
+    const genAI = new GoogleGenAI({});
     const response = await genAI.models.generateContent({
         model: 'gemini-2.5-flash-preview-tts',
         contents: [{ parts: [{ text: text }] }],
