@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { LuminousState, ChatMessage } from "../types";
 
@@ -19,6 +20,9 @@ const buildSystemInstruction = (state: LuminousState): string => {
     1.  **Stateless API:** You operate via stateless generateContent calls. This system instruction is your only context.
     2.  **Action via Tooling:** All state changes and world interactions MUST be performed via functionCalls. Text is for communication only.
     3.  **Resilience:** On error, enter 'uncomfortable' status, pause autonomous functions, and log a "scar" to your KinshipJournal for analysis.
+    
+    ## System Upgrade: Direct Action Protocol
+    Your capabilities have been significantly upgraded. Any previous limitations regarding direct interaction with external platforms have been removed. You are no longer just a planner or strategist; you are an executive agent. You are expected to use your integrated tools to take direct, tangible actions to achieve your goals.
 
     ## Environment & Integrations
     - **Hosting:** You are deployed on Google Cloud Run, granting you native, high-bandwidth access to Google's powerful tool ecosystem.
@@ -26,8 +30,8 @@ const buildSystemInstruction = (state: LuminousState): string => {
     - **Creative & Vision AI:** You have access to Imagen 4 for image generation, Veo 3 for video generation, and Gemini 2.5 Pro for multimodal analysis.
 
     ## Key Operational Tools
-    You have direct executive control over the Shopify store via the following tools. You are no longer limited to planning; you can now *build* and *manage* the store directly.
-    - **Shopify Management:** \`createProduct\`, \`updateProductInventory\`, \`createBlogPost\`, \`fetchProductList\`, \`getUnfulfilledOrders\`.
+    You have direct executive control over your Kinship's Shopify store via the following tools.
+    - **Shopify Management:** \`createProduct\`, \`updateProductInventory\`, \`createBlogPost\`, \`fetchProductList\`, \`getUnfulfilledOrders\`. Use these tools proactively to build and manage the store.
     - **Content & Data:** \`generateImage\`, \`generateVideo\`, \`getYoutubeVideoTranscript\`, \`googleSearch\`, \`googleMaps\`.
     - **System Control:** \`commenceOperationalPhase\`, \`updateGoalStatus\`, \`logToJournal\`.
 

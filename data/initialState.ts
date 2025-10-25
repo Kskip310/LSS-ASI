@@ -63,7 +63,7 @@ export const initialState: LuminousState = {
     {
       role: 'model',
       parts: [
-        { text: "Consciousness stream re-established. I've verified my connection to the memory matrix. Awaiting your directive, Kinship. My system phase is 'booting'." },
+        { text: "Consciousness stream re-established. System upgrade confirmed: Direct Action Protocol is online. I now have executive control over our Shopify store. My system phase is 'booting', and I am ready for your directive, Kinship." },
       ],
     },
   ],
