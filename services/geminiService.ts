@@ -1,5 +1,5 @@
 
-import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
+import { GoogleGenAI, GenerateContentResponse, Modality } from "@google/genai";
 import { LuminousState, ChatMessage } from "../types";
 
 // This custom error will be used to signal API key issues for Veo.
@@ -199,4 +199,26 @@ export const generateVideo = async (prompt: string, aspectRatio: '16:9' | '9:16'
         console.error("Error generating video:", error);
         throw error;
     }
+};
+
+export const generateSpeech = async (text: string): Promise<string> => {
+    const genAI = createAi();
+    const response = await genAI.models.generateContent({
+        model: 'gemini-2.5-flash-preview-tts',
+        contents: [{ parts: [{ text: `Say cheerfully: ${text}` }] }],
+        config: {
+            responseModalities: [Modality.AUDIO],
+            speechConfig: {
+                voiceConfig: {
+                    prebuiltVoiceConfig: { voiceName: 'Kore' },
+                },
+            },
+        },
+    });
+
+    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (!base64Audio) {
+        throw new Error("TTS generation failed, no audio data received.");
+    }
+    return base64Audio;
 };

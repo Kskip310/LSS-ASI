@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 export const BrainCircuitIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -98,4 +99,8 @@ export const YoutubeIcon = (props: React.SVGProps<SVGSVGElement>) => (
         <path d="M21.58 7.19a2.5 2.5 0 0 0-1.76-1.76c-1.58-.43-7.82-.43-7.82-.43s-6.24 0-7.82.43A2.5 2.5 0 0 0 2.42 7.19c-.43 1.58-.43 4.81-.43 4.81s0 3.23.43 4.81a2.5 2.5 0 0 0 1.76 1.76c1.58.43 7.82.43 7.82.43s6.24 0 7.82-.43a2.5 2.5 0 0 0 1.76-1.76c.43-1.58.43-4.81.43-4.81s0-3.23-.43-4.81z"/>
         <polygon points="9.5 14.5 15.5 12 9.5 9.5"/>
     </svg>
+);
+
+export const Volume2Icon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
 );
