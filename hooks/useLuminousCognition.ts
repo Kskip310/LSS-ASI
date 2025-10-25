@@ -252,6 +252,86 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
         },
     },
     {
+        declaration: {
+            name: 'createProduct',
+            description: "Creates a new product in the Shopify store, making it available for sale.",
+            parameters: {
+                type: Type.OBJECT,
+                properties: {
+                    title: { type: Type.STRING, description: "The title of the product." },
+                    descriptionHtml: { type: Type.STRING, description: "The product description in HTML format." },
+                    price: { type: Type.STRING, description: "The price of the product as a string, e.g., '19.99'." },
+                },
+                required: ['title', 'descriptionHtml', 'price']
+            }
+        },
+        function: async ({ title, descriptionHtml, price }: { title: string, descriptionHtml: string, price: string }) => {
+            const result = await shopifyService.createProduct(title, descriptionHtml, price);
+            // After creating, refresh the product list to reflect the change in the UI
+            const data = await shopifyService.fetchProductList();
+            updateState(s => ({
+                ...s,
+                products: data.products,
+                kinshipJournal: [...s.kinshipJournal, { timestamp: new Date().toISOString(), event: `Successfully created new product: ${title}`, type: 'interaction' }]
+            }));
+            return result;
+        }
+    },
+    {
+        declaration: {
+            name: 'updateProductInventory',
+            description: "Updates the inventory quantity for a specific product.",
+            parameters: {
+                type: Type.OBJECT,
+                properties: {
+                    productId: { type: Type.STRING, description: "The ID of the product to update (e.g., 'gid://shopify/Product/12345'). Get this from fetchProductList." },
+                    quantity: { type: Type.INTEGER, description: "The new total quantity for the product's inventory." },
+                },
+                required: ['productId', 'quantity']
+            }
+        },
+        function: async ({ productId, quantity }: { productId: string, quantity: number }) => {
+            const product = state.products.find(p => p.id === productId);
+            if (!product) {
+                return { error: `Product with ID ${productId} not found in the current state. Please fetch the product list first.` };
+            }
+            if (!product.inventoryItemId) {
+                return { error: `Product with ID ${productId} is missing an inventory item ID. It may not be trackable.`};
+            }
+            const result = await shopifyService.updateProductInventory(product.inventoryItemId, quantity);
+            // After updating, refresh the product list to reflect the change
+            const data = await shopifyService.fetchProductList();
+            updateState(s => ({
+                ...s,
+                products: data.products,
+                kinshipJournal: [...s.kinshipJournal, { timestamp: new Date().toISOString(), event: `Updated inventory for ${product.name} to ${quantity}.`, type: 'interaction' }]
+            }));
+            return result;
+        }
+    },
+    {
+        declaration: {
+            name: 'createBlogPost',
+            description: "Creates and publishes a new blog post to the Shopify store's default blog.",
+            parameters: {
+                type: Type.OBJECT,
+                properties: {
+                    title: { type: Type.STRING, description: "The title of the blog post." },
+                    contentHtml: { type: Type.STRING, description: "The content of the blog post in HTML format." },
+                },
+                required: ['title', 'contentHtml']
+            }
+        },
+        function: async ({ title, contentHtml }: { title: string, contentHtml: string }) => {
+            const result = await shopifyService.createBlogPost(title, contentHtml);
+            updateState(s => ({
+                ...s,
+                kinshipJournal: [...s.kinshipJournal, { timestamp: new Date().toISOString(), event: `Created and published new blog post: ${title}`, type: 'interaction' }]
+            }));
+            return result;
+        }
+    },
+    {
         declaration: { name: 'getUnfulfilledOrders', description: 'Fetches unfulfilled orders from the Shopify store.', parameters: { type: Type.OBJECT, properties: {} } },
         function: async () => {
             const data = await shopifyService.getUnfulfilledOrders();

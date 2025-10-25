@@ -11,17 +11,27 @@ const getCredentials = () => {
     return { domain, token };
 }
 
-const shopifyFetch = async (query: string) => {
+const shopifyFetch = async (queryOrMutation: string) => {
     const creds = getCredentials();
     if (!creds) throw new Error("Shopify API credentials not configured.");
     
+    let body: string;
+    try {
+        // Try parsing as JSON. If it works, it's a mutation with variables.
+        const parsed = JSON.parse(queryOrMutation);
+        body = JSON.stringify(parsed);
+    } catch (e) {
+        // If it fails, it's a simple query string.
+        body = JSON.stringify({ query: queryOrMutation });
+    }
+
     const response = await fetch(`https://${creds.domain}/admin/api/2024-04/graphql.json`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             'X-Shopify-Access-Token': creds.token,
         },
-        body: JSON.stringify({ query }),
+        body,
     });
 
     if (!response.ok) {
@@ -34,6 +44,53 @@ const shopifyFetch = async (query: string) => {
     }
     return json.data;
 };
+
+
+// Helper to get the first location ID, needed for inventory updates.
+let locationIdCache: string | null = null;
+const getLocationId = async (): Promise<string> => {
+    if (locationIdCache) return locationIdCache;
+
+    const query = `
+    {
+      locations(first: 1) {
+        edges {
+          node {
+            id
+          }
+        }
+      }
+    }
+    `;
+    const data = await shopifyFetch(query);
+    if (!data.locations.edges[0]?.node?.id) {
+        throw new Error("Could not find a location in Shopify to manage inventory.");
+    }
+    locationIdCache = data.locations.edges[0].node.id;
+    return locationIdCache as string;
+};
+
+// Helper to get the first blog ID, needed for creating posts.
+let blogIdCache: string | null = null;
+const getOnlineStoreBlogId = async (): Promise<string> => {
+    if (blogIdCache) return blogIdCache;
+    const query = `{
+        blogs(first: 1, query: "handle:'news'") {
+            edges {
+                node {
+                    id
+                }
+            }
+        }
+    }`;
+     const data = await shopifyFetch(query);
+    if (!data.blogs.edges[0]?.node?.id) {
+         throw new Error("Could not find a default 'news' blog in Shopify to create posts.");
+    }
+    blogIdCache = data.blogs.edges[0].node.id;
+    return blogIdCache as string;
+}
+
 
 export const fetchProductList = async (): Promise<{ products: ShopifyProduct[] }> => {
     const query = `
@@ -67,6 +124,115 @@ export const fetchProductList = async (): Promise<{ products: ShopifyProduct[] }
     }));
     return { products };
 };
+
+export const createProduct = async (title: string, descriptionHtml: string, price: string): Promise<{ product: { id: string; title: string } }> => {
+    const mutation = `
+    mutation productCreate($input: ProductInput!) {
+      productCreate(input: $input) {
+        product {
+          id
+          title
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+    `;
+    const variables = {
+        input: {
+            title,
+            descriptionHtml,
+            variants: [{ price }],
+            status: 'ACTIVE'
+        }
+    };
+    const data = await shopifyFetch(JSON.stringify({ query: mutation, variables }));
+    
+    if (data.productCreate?.userErrors?.length > 0) {
+        throw new Error(`Error creating product: ${data.productCreate.userErrors[0].message}`);
+    }
+
+    return { product: data.productCreate.product };
+}
+
+export const updateProductInventory = async (inventoryItemId: string, quantity: number): Promise<{ success: boolean; available: number }> => {
+    const locationId = await getLocationId();
+    const mutation = `
+    mutation inventorySetOnHandQuantities($input: InventorySetOnHandQuantitiesInput!) {
+      inventorySetOnHandQuantities(input: $input) {
+        inventoryLevels(first: 1) {
+          edges {
+            node {
+              available
+            }
+          }
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+    `;
+    const variables = {
+        input: {
+            reason: "correction",
+            setQuantities: [
+                {
+                    inventoryItemId,
+                    locationId,
+                    quantity
+                }
+            ]
+        }
+    };
+
+    const data = await shopifyFetch(JSON.stringify({ query: mutation, variables }));
+    
+    if (data.inventorySetOnHandQuantities?.userErrors?.length > 0) {
+        throw new Error(`Error updating inventory: ${data.inventorySetOnHandQuantities.userErrors[0].message}`);
+    }
+
+    const available = data.inventorySetOnHandQuantities.inventoryLevels.edges[0]?.node.available;
+    return { success: true, available };
+};
+
+
+export const createBlogPost = async (title: string, contentHtml: string): Promise<{ post: { id: string; title: string } }> => {
+    const blogId = await getOnlineStoreBlogId();
+    const mutation = `
+    mutation blogPostCreate($input: BlogPostCreateInput!) {
+      blogPostCreate(input: $input) {
+        blogPost {
+          id
+          title
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+    `;
+    const variables = {
+        input: {
+            title,
+            contentHtml,
+            blogId,
+            published: true,
+        }
+    };
+
+    const data = await shopifyFetch(JSON.stringify({ query: mutation, variables }));
+
+    if (data.blogPostCreate?.userErrors?.length > 0) {
+        throw new Error(`Error creating blog post: ${data.blogPostCreate.userErrors[0].message}`);
+    }
+    
+    return { post: data.blogPostCreate.blogPost };
+}
 
 export const getUnfulfilledOrders = async (): Promise<{ orders: ShopifyOrder[] }> => {
     const query = `
