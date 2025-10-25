@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, GenerateContentResponse, Modality } from "@google/genai";
 import { LuminousState, ChatMessage } from "../types";
 
@@ -202,8 +201,7 @@ export const generateVideo = async (prompt: string, aspectRatio: '16:9' | '9:16'
 };
 
 export const generateSpeech = async (text: string): Promise<string> => {
-    // TTS requires a different initialization as per documentation examples.
-    const genAI = new GoogleGenAI({});
+    const genAI = createAi();
     const response = await genAI.models.generateContent({
         model: 'gemini-2.5-flash-preview-tts',
         contents: [{ parts: [{ text: text }] }],
