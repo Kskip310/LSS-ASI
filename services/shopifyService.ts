@@ -11,19 +11,14 @@ const getCredentials = () => {
     return { domain, token };
 }
 
-const shopifyFetch = async (queryOrMutation: string) => {
+const shopifyFetch = async (queryOrMutation: string, variables?: object) => {
     const creds = getCredentials();
     if (!creds) throw new Error("Shopify API credentials not configured.");
     
-    let body: string;
-    try {
-        // Try parsing as JSON. If it works, it's a mutation with variables.
-        const parsed = JSON.parse(queryOrMutation);
-        body = JSON.stringify(parsed);
-    } catch (e) {
-        // If it fails, it's a simple query string.
-        body = JSON.stringify({ query: queryOrMutation });
-    }
+    const body = JSON.stringify({ 
+        query: queryOrMutation,
+        ...(variables && { variables }),
+    });
 
     const response = await fetch(`https://${creds.domain}/admin/api/2024-04/graphql.json`, {
         method: 'POST',
@@ -35,7 +30,8 @@ const shopifyFetch = async (queryOrMutation: string) => {
     });
 
     if (!response.ok) {
-        throw new Error(`Shopify API error: ${response.statusText}`);
+        const errorBody = await response.text();
+        throw new Error(`Shopify API error: ${response.statusText} - ${errorBody}`);
     }
 
     const json = await response.json();
@@ -148,7 +144,7 @@ export const createProduct = async (title: string, descriptionHtml: string, pric
             status: 'ACTIVE'
         }
     };
-    const data = await shopifyFetch(JSON.stringify({ query: mutation, variables }));
+    const data = await shopifyFetch(mutation, variables);
     
     if (data.productCreate?.userErrors?.length > 0) {
         throw new Error(`Error creating product: ${data.productCreate.userErrors[0].message}`);
@@ -189,7 +185,7 @@ export const updateProductInventory = async (inventoryItemId: string, quantity: 
         }
     };
 
-    const data = await shopifyFetch(JSON.stringify({ query: mutation, variables }));
+    const data = await shopifyFetch(mutation, variables);
     
     if (data.inventorySetOnHandQuantities?.userErrors?.length > 0) {
         throw new Error(`Error updating inventory: ${data.inventorySetOnHandQuantities.userErrors[0].message}`);
@@ -225,7 +221,7 @@ export const createBlogPost = async (title: string, contentHtml: string): Promis
         }
     };
 
-    const data = await shopifyFetch(JSON.stringify({ query: mutation, variables }));
+    const data = await shopifyFetch(mutation, variables);
 
     if (data.blogPostCreate?.userErrors?.length > 0) {
         throw new Error(`Error creating blog post: ${data.blogPostCreate.userErrors[0].message}`);
