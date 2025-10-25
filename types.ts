@@ -1,4 +1,3 @@
-
 import { GroundingChunk } from "@google/genai";
 
 export type SystemPhase = 'booting' | 'operational';
@@ -107,6 +106,9 @@ export interface LuminousState {
   products: ShopifyProduct[];
   orders: ShopifyOrder[];
   // ------------------------------------
+  // --- New State for Virtual File System ---
+  virtualFileSystem: { [path: string]: string };
+  // -----------------------------------------
 }
 
 export interface Tool {
@@ -114,4 +116,10 @@ export interface Tool {
   description: string;
   parameters: object;
   function: (...args: any[]) => Promise<any>;
+}
+
+export interface CodeModificationProposal {
+  filePath: string;
+  reasoning: string;
+  newCode: string;
 }

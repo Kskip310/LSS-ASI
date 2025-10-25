@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback } from 'react';
 import * as persistenceService from '../services/persistenceService';
 import { AlertTriangleIcon, LoaderCircleIcon } from './icons';
@@ -24,7 +23,7 @@ const MemoryTab: React.FC = () => {
     }, []);
 
     const handleRestore = async (backupKey: string) => {
-        if (!window.confirm(`Are you sure you want to restore the memory from this backup?\n\n${new Date(backupKey.substring(backupKey.indexOf(':') + 1)).toLocaleString()}\n\nThis will overwrite the current state and reload the application.`)) {
+        if (!window.confirm(`Are you sure you want to restore the memory from this backup?\n\n${new Date(backupKey.split(':')[1]).toLocaleString()}\n\nThis will overwrite the current state and reload the application.`)) {
             return;
         }
 
@@ -42,17 +41,10 @@ const MemoryTab: React.FC = () => {
 
     const formatBackupKey = (key: string): string => {
         try {
-            // The key is in the format 'luminous_state_backup:ISO_TIMESTAMP'.
-            // An ISO timestamp contains colons, so we must robustly get the substring after the first colon.
-            const timestamp = key.substring(key.indexOf(':') + 1);
-            const date = new Date(timestamp);
-            // Check if parsing resulted in a valid date
-            if (isNaN(date.getTime())) {
-                return key; // Return original key if timestamp is invalid
-            }
-            return date.toLocaleString();
+            const timestamp = key.split('backup:')[1];
+            return new Date(timestamp).toLocaleString();
         } catch {
-            return key; // Fallback to original key on any error
+            return key;
         }
     };
 

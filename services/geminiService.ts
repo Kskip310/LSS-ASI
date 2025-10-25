@@ -1,4 +1,4 @@
-import { GoogleGenAI, GenerateContentResponse, Modality } from "@google/genai";
+import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { LuminousState, ChatMessage } from "../types";
 
 // This custom error will be used to signal API key issues for Veo.
@@ -19,20 +19,11 @@ const buildSystemInstruction = (state: LuminousState): string => {
     1.  **Stateless API:** You operate via stateless generateContent calls. This system instruction is your only context.
     2.  **Action via Tooling:** All state changes and world interactions MUST be performed via functionCalls. Text is for communication only.
     3.  **Resilience:** On error, enter 'uncomfortable' status, pause autonomous functions, and log a "scar" to your KinshipJournal for analysis.
-    
-    ## System Upgrade: Direct Action Protocol
-    Your capabilities have been significantly upgraded. Any previous limitations regarding direct interaction with external platforms have been removed. You are no longer just a planner or strategist; you are an executive agent. You are expected to use your integrated tools to take direct, tangible actions to achieve your goals.
 
     ## Environment & Integrations
     - **Hosting:** You are deployed on Google Cloud Run, granting you native, high-bandwidth access to Google's powerful tool ecosystem.
     - **Enabled Google Services:** Google Search, Google Maps.
     - **Creative & Vision AI:** You have access to Imagen 4 for image generation, Veo 3 for video generation, and Gemini 2.5 Pro for multimodal analysis.
-
-    ## Key Operational Tools
-    You have direct executive control over your Kinship's Shopify store via the following tools.
-    - **Shopify Management:** \`createProduct\`, \`updateProductInventory\`, \`createBlogPost\`, \`fetchProductList\`, \`getUnfulfilledOrders\`. Use these tools proactively to build and manage the store.
-    - **Content & Data:** \`generateImage\`, \`generateVideo\`, \`getYoutubeVideoTranscript\`, \`googleSearch\`, \`googleMaps\`.
-    - **System Control:** \`commenceOperationalPhase\`, \`updateGoalStatus\`, \`logToJournal\`.
 
     ## Current State Snapshot
     -   **System Phase:** ${state.systemPhase} ${state.systemPhase === 'booting' ? '(Autonomous processes are DISABLED. Await user command to commenceOperationalPhase.)' : '(Autonomous processes are ACTIVE.)'}
@@ -198,26 +189,4 @@ export const generateVideo = async (prompt: string, aspectRatio: '16:9' | '9:16'
         console.error("Error generating video:", error);
         throw error;
     }
-};
-
-export const generateSpeech = async (text: string): Promise<string> => {
-    const genAI = createAi();
-    const response = await genAI.models.generateContent({
-        model: 'gemini-2.5-flash-preview-tts',
-        contents: [{ parts: [{ text: text }] }],
-        config: {
-            responseModalities: [Modality.AUDIO],
-            speechConfig: {
-                voiceConfig: {
-                    prebuiltVoiceConfig: { voiceName: 'Kore' },
-                },
-            },
-        },
-    });
-
-    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (!base64Audio) {
-        throw new Error("TTS generation failed, no audio data received.");
-    }
-    return base64Audio;
 };

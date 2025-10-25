@@ -2,9 +2,8 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { ChatMessage, ChatMessagePart } from '../types';
-import { SendIcon, BotIcon, UserIcon, BrainCircuitIcon, SearchIcon, MapPinIcon, PaperclipIcon, Volume2Icon, LoaderCircleIcon } from './icons';
+import { SendIcon, BotIcon, UserIcon, BrainCircuitIcon, SearchIcon, MapPinIcon, PaperclipIcon } from './icons';
 import { GroundingChunk } from '@google/genai';
-import { generateSpeech } from '../services/geminiService';
 
 interface ChatInterfaceProps {
   history: ChatMessage[];
@@ -55,51 +54,11 @@ const GroundingSources: React.FC<{ sources: GroundingChunk[] }> = ({ sources }) 
   );
 };
 
-// --- Audio Helper Functions ---
-function decode(base64: string): Uint8Array {
-  const binaryString = atob(base64);
-  const len = binaryString.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  return bytes;
-}
-
-async function decodeAudioData(
-  data: Uint8Array,
-  ctx: AudioContext,
-): Promise<AudioBuffer> {
-  const sampleRate = 24000;
-  const numChannels = 1;
-  const dataInt16 = new Int16Array(data.buffer);
-  const frameCount = dataInt16.length / numChannels;
-  const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
-
-  for (let channel = 0; channel < numChannels; channel++) {
-    const channelData = buffer.getChannelData(channel);
-    for (let i = 0; i < frameCount; i++) {
-      channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
-    }
-  }
-  return buffer;
-}
-
-let audioContext: AudioContext | null = null;
-const getAudioContext = (): AudioContext => {
-    if (!audioContext || audioContext.state === 'closed') {
-        audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-    }
-    return audioContext;
-};
-// ----------------------------
-
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ history, onSendMessage, isProcessing }) => {
   const [input, setInput] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [filePreview, setFilePreview] = useState<string | null>(null);
-  const [isLoadingAudioFor, setIsLoadingAudioFor] = useState<number | null>(null);
   const endOfMessagesRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -160,40 +119,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ history, onSendMessage, i
     }
   };
 
-  const handlePlayAudio = async (message: ChatMessage, index: number) => {
-    if (isLoadingAudioFor !== null) return;
-
-    const textToSpeak = message.parts
-      .filter(p => p.text)
-      .map(p => p.text)
-      .join('\n');
-    
-    if (!textToSpeak.trim()) return;
-
-    setIsLoadingAudioFor(index);
-    try {
-        const base64Audio = await generateSpeech(textToSpeak);
-        const ctx = getAudioContext();
-        if (ctx.state === 'suspended') {
-            await ctx.resume();
-        }
-
-        const decodedBytes = decode(base64Audio);
-        const audioBuffer = await decodeAudioData(decodedBytes, ctx);
-        
-        const source = ctx.createBufferSource();
-        source.buffer = audioBuffer;
-        source.connect(ctx.destination);
-        source.start();
-    } catch (error) {
-        console.error("Failed to generate or play speech:", error);
-        alert("Sorry, I couldn't generate the audio for that message.");
-    } finally {
-        setIsLoadingAudioFor(null);
-    }
-  };
-
-
   return (
     <div className="flex flex-col h-full bg-gray-900/50">
       <div className="flex-grow p-4 overflow-y-auto space-y-4">
@@ -212,7 +137,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ history, onSendMessage, i
                     }
                  }
                 if (part.text) {
-                  return <p key={partIndex} className="whitespace-pre-wrap break-words">{part.text}</p>;
+                  return <p key={partIndex} className="whitespace-pre-wrap">{part.text}</p>;
                 }
                 if (part.functionCall) {
                   return (
@@ -232,22 +157,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ history, onSendMessage, i
               })}
               {msg.grounding && <GroundingSources sources={msg.grounding} />}
             </div>
-             {msg.role === 'model' && (
-              <div className="self-center">
-                <button
-                  onClick={() => handlePlayAudio(msg, index)}
-                  disabled={isLoadingAudioFor !== null}
-                  className="p-2 text-gray-400 hover:text-purple-400 disabled:text-gray-600 disabled:cursor-wait ml-2"
-                  aria-label="Read message aloud"
-                >
-                  {isLoadingAudioFor === index ? (
-                    <LoaderCircleIcon className="w-5 h-5 animate-spin" />
-                  ) : (
-                    <Volume2Icon className="w-5 h-5" />
-                  )}
-                </button>
-              </div>
-            )}
              {msg.role === 'user' && <UserIcon className="w-8 h-8 text-blue-400 flex-shrink-0 mt-1" />}
           </div>
         ))}

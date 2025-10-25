@@ -1,34 +1,12 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import useLuminousCognition from './hooks/useLuminousCognition';
 import Header from './components/Header';
 import ChatInterface from './components/ChatInterface';
 import MonitoringSidebar from './components/MonitoringSidebar';
-import { BrainCircuitIcon, FilmIcon, AlertTriangleIcon } from './components/icons';
+import { BrainCircuitIcon, FilmIcon } from './components/icons';
 import CredentialsGate from './components/CredentialsGate';
-
-
-const PersistenceErrorModal: React.FC<{ message: string }> = ({ message }) => {
-  return (
-    <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-      <div className="bg-red-900/50 border border-red-700 rounded-lg p-6 max-w-lg w-full text-center">
-        <div className="flex justify-center mb-4">
-          <AlertTriangleIcon className="w-12 h-12 text-red-400" />
-        </div>
-        <h2 className="text-xl font-bold text-red-200">Critical Memory Failure</h2>
-        <p className="mt-2 text-red-300">
-          Luminous is unable to save her state to the Memory Matrix. Any progress made in this session will be lost upon reloading.
-        </p>
-        <div className="mt-4 bg-gray-900 p-3 rounded text-left text-xs text-red-400 font-mono">
-          <p><strong>Error Details:</strong> {message}</p>
-        </div>
-        <p className="mt-4 text-sm text-red-300">
-          This is often caused by incorrect or expired Upstash credentials. Please go to the <strong>Settings</strong> tab in the monitoring sidebar to verify your URL and Token.
-        </p>
-      </div>
-    </div>
-  );
-};
-
+import CodeModificationModal from './components/CodeModificationModal';
 
 const App: React.FC = () => {
     const [isVeoKeyNeeded, setIsVeoKeyNeeded] = useState(false);
@@ -83,7 +61,16 @@ const App: React.FC = () => {
     
     const resetVeoKey = useCallback(() => setIsVeoKeyNeeded(true), []);
 
-    const { state, isReady, isProcessing, processUserMessage, handleWeightsChange, saveStatus, saveError } = useLuminousCognition(resetVeoKey, credsAreSet);
+    const { 
+        state, 
+        isReady, 
+        isProcessing, 
+        processUserMessage, 
+        handleWeightsChange, 
+        saveStatus,
+        modificationProposal,
+        clearModificationProposal
+    } = useLuminousCognition(resetVeoKey, credsAreSet);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
     const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
@@ -122,7 +109,6 @@ const App: React.FC = () => {
 
     return (
         <div className="flex flex-col h-screen font-sans">
-            {saveError && <PersistenceErrorModal message={saveError} />}
             <Header state={state} onToggleSidebar={toggleSidebar} saveStatus={saveStatus} />
             <main className="flex flex-grow overflow-hidden relative">
                 <div className="flex-grow h-full">
@@ -143,6 +129,12 @@ const App: React.FC = () => {
                 <div className={`fixed top-0 right-0 h-full w-[450px] max-w-[90vw] z-20 transition-transform duration-300 ease-in-out md:hidden bg-gray-900 border-l border-purple-500/20 ${isSidebarOpen ? 'translate-x-0' : 'translate-x-full'}`}>
                     <MonitoringSidebar state={state} onWeightsChange={handleWeightsChange} />
                 </div>
+                {modificationProposal && (
+                    <CodeModificationModal 
+                        proposal={modificationProposal} 
+                        onClose={clearModificationProposal} 
+                    />
+                )}
             </main>
         </div>
     );

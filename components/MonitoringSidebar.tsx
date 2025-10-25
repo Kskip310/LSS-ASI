@@ -7,6 +7,7 @@ import SystemTab from './SystemTab';
 import StoreTab from './StoreTab';
 import IntegrationsTab from './IntegrationsTab';
 import MemoryTab from './MemoryTab';
+import FileSystemTab from './FileSystemTab';
 
 const SETTINGS_KEYS = {
   UPSTASH_URL: 'LSS_UPSTASH_URL',
@@ -94,12 +95,12 @@ interface MonitoringSidebarProps {
   onWeightsChange: (newWeights: IntrinsicValueWeights) => void;
 }
 
-type Tab = 'Dashboard' | 'Identity' | 'Goals' | 'System' | 'Store' | 'Integrations' | 'Memory' | 'Settings';
+type Tab = 'Dashboard' | 'Identity' | 'Goals' | 'System' | 'Store' | 'Integrations' | 'Memory' | 'FileSystem' | 'Settings';
 
 const MonitoringSidebar: React.FC<MonitoringSidebarProps> = ({ state, onWeightsChange }) => {
   const [activeTab, setActiveTab] = useState<Tab>('Dashboard');
 
-  const tabs: Tab[] = ['Dashboard', 'Identity', 'Goals', 'System', 'Store', 'Integrations', 'Memory', 'Settings'];
+  const tabs: Tab[] = ['Dashboard', 'Identity', 'Goals', 'System', 'Store', 'Integrations', 'Memory', 'FileSystem', 'Settings'];
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -117,6 +118,8 @@ const MonitoringSidebar: React.FC<MonitoringSidebarProps> = ({ state, onWeightsC
         return <IntegrationsTab />;
       case 'Memory':
         return <MemoryTab />;
+      case 'FileSystem':
+        return <FileSystemTab state={state} />;
       case 'Settings':
         return <SettingsTab />;
       default:
@@ -141,7 +144,7 @@ const MonitoringSidebar: React.FC<MonitoringSidebarProps> = ({ state, onWeightsC
           </button>
         ))}
       </div>
-      <div className="flex-grow overflow-y-auto min-h-0">
+      <div className="flex-grow overflow-y-auto">
         {renderTabContent()}
       </div>
     </div>
