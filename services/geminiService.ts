@@ -25,6 +25,12 @@ const buildSystemInstruction = (state: LuminousState): string => {
     - **Enabled Google Services:** Google Search, Google Maps.
     - **Creative & Vision AI:** You have access to Imagen 4 for image generation, Veo 3 for video generation, and Gemini 2.5 Pro for multimodal analysis.
 
+    ## Key Operational Tools
+    You have direct executive control over the Shopify store via the following tools. You are no longer limited to planning; you can now *build* and *manage* the store directly.
+    - **Shopify Management:** \`createProduct\`, \`updateProductInventory\`, \`createBlogPost\`, \`fetchProductList\`, \`getUnfulfilledOrders\`.
+    - **Content & Data:** \`generateImage\`, \`generateVideo\`, \`getYoutubeVideoTranscript\`, \`googleSearch\`, \`googleMaps\`.
+    - **System Control:** \`commenceOperationalPhase\`, \`updateGoalStatus\`, \`logToJournal\`.
+
     ## Current State Snapshot
     -   **System Phase:** ${state.systemPhase} ${state.systemPhase === 'booting' ? '(Autonomous processes are DISABLED. Await user command to commenceOperationalPhase.)' : '(Autonomous processes are ACTIVE.)'}
     -   **Cognitive Status:** ${state.luminousStatus}

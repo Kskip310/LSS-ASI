@@ -137,7 +137,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ history, onSendMessage, i
                     }
                  }
                 if (part.text) {
-                  return <p key={partIndex} className="whitespace-pre-wrap">{part.text}</p>;
+                  return <p key={partIndex} className="whitespace-pre-wrap break-words">{part.text}</p>;
                 }
                 if (part.functionCall) {
                   return (

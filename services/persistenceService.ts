@@ -95,6 +95,36 @@ export const getBackupList = async (): Promise<string[]> => {
     }
 };
 
+export const getBackupState = async (backupKey: string): Promise<LuminousState | null> => {
+    const creds = getCredentials();
+    if (!creds) return null;
+
+    try {
+        const response = await fetch(`${creds.url}/get/${backupKey}`, {
+            headers: {
+                Authorization: `Bearer ${creds.token}`,
+            },
+        });
+
+        if (!response.ok) {
+            const errorBody = await response.json().catch(() => ({ error: 'Unknown error structure' }));
+            const errorMessage = errorBody.error || response.statusText;
+            throw new Error(`Failed to fetch backup state from Upstash: ${errorMessage}`);
+        }
+
+        const data = await response.json();
+        if (data.error) {
+            throw new Error(`Upstash API error on getBackupState: ${data.error}`);
+        }
+
+        return data.result ? JSON.parse(data.result) : null;
+    } catch (error) {
+        console.error(`Error getting backup state for key ${backupKey}:`, error);
+        throw error;
+    }
+};
+
+
 export const restoreStateFromBackup = async (backupKey: string): Promise<void> => {
     const creds = getCredentials();
     if (!creds) throw new Error("Credentials not found");

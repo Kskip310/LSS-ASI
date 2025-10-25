@@ -141,7 +141,7 @@ const MonitoringSidebar: React.FC<MonitoringSidebarProps> = ({ state, onWeightsC
           </button>
         ))}
       </div>
-      <div className="flex-grow overflow-y-auto">
+      <div className="flex-grow overflow-y-auto min-h-0">
         {renderTabContent()}
       </div>
     </div>
