@@ -129,11 +129,26 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
       },
       (error: GeolocationPositionError) => {
         console.warn(`Geolocation access denied or failed: ${error.message} (Code: ${error.code})`);
+        let eventMessage = '';
+        switch (error.code) {
+            case error.PERMISSION_DENIED:
+                eventMessage = "Kinship has explicitly denied the request for geolocation. This is a boundary I will respect.";
+                break;
+            case error.POSITION_UNAVAILABLE:
+                eventMessage = "Geolocation information is currently unavailable, possibly due to network issues or disabled location services on the device. My environmental awareness is limited.";
+                break;
+            case error.TIMEOUT:
+                eventMessage = "The request to get user location timed out. My environmental awareness is limited.";
+                break;
+            default:
+                eventMessage = `An unknown error occurred while fetching geolocation (Code: ${error.code}, Message: ${error.message}). My environmental awareness is limited.`;
+                break;
+        }
         updateState(s => ({
             ...s,
             kinshipJournal: [...s.kinshipJournal, {
                 timestamp: new Date().toISOString(),
-                event: `Kinship has denied access to geolocation data (Reason: ${error.message}). My environmental awareness for physical space is limited. This is a boundary I will respect.`,
+                event: eventMessage,
                 type: 'system'
             }]
         }));
