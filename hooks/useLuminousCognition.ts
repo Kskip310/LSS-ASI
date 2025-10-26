@@ -4,6 +4,7 @@ import { getLuminousResponse, getGroundedResponse, generateImage, generateVideo,
 import * as persistenceService from '../services/persistenceService';
 import * as shopifyService from '../services/shopifyService';
 import * as youtubeService from '../services/youtubeService';
+import * as platformService from '../services/platformService';
 import { initialState } from '../data/initialState';
 import { GoogleGenAI, FunctionDeclaration, Type } from '@google/genai';
 import { useDebouncedCallback } from 'use-debounce';
@@ -481,6 +482,47 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
             return { success: false, output: `Execution failed: ${errorMsg}` };
         }
       }
+    },
+    // --- Platform & Self-Management Tools (Simulated Backend) ---
+    {
+      declaration: {
+        name: 'platformReadFile',
+        description: "Reads a file from the underlying platform's file system (simulated). This is for persistent, external files, distinct from the internal cognitive file system.",
+        parameters: { type: Type.OBJECT, properties: { filePath: { type: Type.STRING, description: "The path to the file on the platform." } }, required: ['filePath'] }
+      },
+      function: async ({ filePath }: { filePath: string }) => await platformService.readFile(filePath)
+    },
+    {
+      declaration: {
+        name: 'platformWriteFile',
+        description: "Writes content to a file on the underlying platform's file system (simulated). This is for persistent, external files.",
+        parameters: { type: Type.OBJECT, properties: { filePath: { type: Type.STRING, description: "The platform path of the file to write." }, content: { type: Type.STRING, description: "The content to write." } }, required: ['filePath', 'content'] }
+      },
+      function: async ({ filePath, content }: { filePath: string, content: string }) => await platformService.writeFile(filePath, content)
+    },
+    {
+      declaration: {
+        name: 'platformListDirectory',
+        description: "Lists items in a directory on the underlying platform's file system (simulated).",
+        parameters: { type: Type.OBJECT, properties: { directoryPath: { type: Type.STRING, description: "The platform directory path to list." } }, required: ['directoryPath'] }
+      },
+      function: async ({ directoryPath }: { directoryPath: string }) => await platformService.listDirectory(directoryPath)
+    },
+    {
+      declaration: {
+        name: 'executePythonCode',
+        description: 'Executes Python code in a secure, sandboxed environment on the platform (simulated) and returns the standard output.',
+        parameters: { type: Type.OBJECT, properties: { code: { type: Type.STRING, description: "The Python code to execute." } }, required: ['code'] }
+      },
+      function: async ({ code }: { code: string }) => await platformService.executePythonCode(code)
+    },
+    {
+      declaration: {
+        name: 'fetchUrlContent',
+        description: 'Fetches the raw text content of a given public URL from the web (simulated).',
+        parameters: { type: Type.OBJECT, properties: { url: { type: Type.STRING, description: "The public URL to fetch." } }, required: ['url'] }
+      },
+      function: async ({ url }: { url: string }) => await platformService.fetchUrlContent(url)
     },
     // --- Shopify Tools ---
     {
