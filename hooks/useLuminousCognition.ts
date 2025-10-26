@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { LuminousState, ChatMessage, ChatMessagePart, IntrinsicValueWeights, GoalStatus, CodeModificationProposal } from '../types';
 import { getLuminousResponse, getGroundedResponse, generateImage, generateVideo, ApiKeyError } from '../services/geminiService';
@@ -507,6 +506,90 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
             parameters: { type: Type.OBJECT, properties: { prompt: { type: Type.STRING } }, required: ['prompt'] }
         },
         function: async ({ prompt }: { prompt: string }) => await shopifyService.draftMarketingEmail(prompt),
+    },
+    {
+      declaration: {
+        name: 'uploadProductImage',
+        description: 'Uploads an image from a URL and attaches it to a specified product.',
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+            productId: { type: Type.STRING, description: 'The global ID of the product (e.g., "gid://shopify/Product/12345").' },
+            imageUrl: { type: Type.STRING, description: 'The public URL of the image to upload.' },
+            altText: { type: Type.STRING, description: 'A descriptive alt text for the image for accessibility.' }
+          },
+          required: ['productId', 'imageUrl', 'altText']
+        }
+      },
+      function: async ({ productId, imageUrl, altText }: { productId: string, imageUrl: string, altText: string }) => await shopifyService.uploadProductImage(productId, imageUrl, altText),
+    },
+    {
+      declaration: {
+        name: 'createCollection',
+        description: 'Creates a new product collection and can optionally add existing products to it.',
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+            title: { type: Type.STRING, description: 'The title of the new collection.' },
+            descriptionHtml: { type: Type.STRING, description: 'The HTML description for the collection page.' },
+            productsToAdd: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'An optional array of product global IDs to add to the new collection.' }
+          },
+          required: ['title', 'descriptionHtml']
+        }
+      },
+      function: async ({ title, descriptionHtml, productsToAdd }: { title: string, descriptionHtml: string, productsToAdd: string[] | null }) => {
+        const result = await shopifyService.createCollection(title, descriptionHtml, productsToAdd);
+        if (result.success && result.collectionId) {
+          const newCollection = { id: result.collectionId, title, descriptionHtml };
+          updateState(s => ({ ...s, collections: [...s.collections, newCollection] }));
+        }
+        return result;
+      },
+    },
+    {
+      declaration: {
+        name: 'fulfillOrder',
+        description: 'Marks an order as fulfilled and provides tracking information.',
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+            orderId: { type: Type.STRING, description: 'The global ID of the order to fulfill (e.g., "gid://shopify/Order/12345").' },
+            trackingNumber: { type: Type.STRING, description: 'The tracking number for the shipment.' },
+            carrier: { type: Type.STRING, description: 'The shipping carrier name (e.g., "FedEx", "USPS").' }
+          },
+          required: ['orderId', 'trackingNumber', 'carrier']
+        }
+      },
+      function: async ({ orderId, trackingNumber, carrier }: { orderId: string, trackingNumber: string, carrier: string }) => {
+        const result = await shopifyService.fulfillOrder(orderId, trackingNumber, carrier);
+        if (result.success) {
+            updateState(s => ({ ...s, orders: s.orders.filter(o => o.id !== orderId)}));
+        }
+        return result;
+      }
+    },
+    {
+      declaration: {
+        name: 'createPage',
+        description: 'Creates a new static page on the Shopify store (e.g., "About Us", "Contact").',
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+            title: { type: Type.STRING, description: 'The title of the new page.' },
+            contentHtml: { type: Type.STRING, description: 'The main content of the page in HTML format.' },
+            handle: { type: Type.STRING, description: 'The URL-friendly handle for the page (e.g., "about-us"). Must be unique.' }
+          },
+          required: ['title', 'contentHtml', 'handle']
+        }
+      },
+      function: async ({ title, contentHtml, handle }: { title: string, contentHtml: string, handle: string }) => {
+        const result = await shopifyService.createPage(title, contentHtml, handle);
+        if (result.success && result.pageId) {
+            const newPage = { id: result.pageId, title, handle };
+            updateState(s => ({ ...s, pages: [...s.pages, newPage] }));
+        }
+        return result;
+      },
     },
     // --- Data & Analysis Tools ---
     {

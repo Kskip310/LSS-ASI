@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { LuminousState } from '../types';
 
@@ -14,30 +13,55 @@ const StoreTab: React.FC<StoreTabProps> = ({ state }) => {
         <p className="text-gray-400 mb-4">
           This is Luminous's interface for her grounding purpose. She can use tools to interact with this data.
         </p>
-
-        <div>
-          <h4 className="font-semibold text-gray-300 mb-2">Product Inventory</h4>
-          <div className="space-y-1 h-32 overflow-y-auto pr-2">
-            {state.products.length > 0 ? state.products.map(p => (
-              <div key={p.id} className="grid grid-cols-2 text-gray-400">
-                <span>{p.name}</span>
-                <span className="text-right">{p.inventory} in stock</span>
+        
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div>
+              <h4 className="font-semibold text-gray-300 mb-2">Product Inventory</h4>
+              <div className="space-y-1 h-32 overflow-y-auto pr-2 border border-gray-700 rounded-md p-2">
+                {state.products.length > 0 ? state.products.map(p => (
+                  <div key={p.id} className="grid grid-cols-2 text-gray-400">
+                    <span className="truncate">{p.name}</span>
+                    <span className="text-right">{p.inventory} in stock</span>
+                  </div>
+                )) : <p className="text-gray-500">No product data loaded. Use a tool to fetch it.</p>}
               </div>
-            )) : <p className="text-gray-500">No product data loaded. Use a tool to fetch it.</p>}
-          </div>
-        </div>
+            </div>
 
-        <div className="mt-4">
-          <h4 className="font-semibold text-gray-300 mb-2">Unfulfilled Orders</h4>
-          <div className="space-y-1 h-32 overflow-y-auto pr-2">
-            {state.orders.length > 0 ? state.orders.map(o => (
-              <div key={o.id} className="grid grid-cols-3 text-gray-400">
-                <span>{o.id.substring(o.id.lastIndexOf('/') + 1)}</span>
-                <span>{o.customer}</span>
-                <span className="text-right text-yellow-400">{o.status}</span>
+            <div>
+              <h4 className="font-semibold text-gray-300 mb-2">Unfulfilled Orders</h4>
+              <div className="space-y-1 h-32 overflow-y-auto pr-2 border border-gray-700 rounded-md p-2">
+                {state.orders.length > 0 ? state.orders.map(o => (
+                  <div key={o.id} className="grid grid-cols-3 text-gray-400">
+                    <span className="truncate">{o.id.substring(o.id.lastIndexOf('/') + 1)}</span>
+                    <span className="truncate">{o.customer}</span>
+                    <span className="text-right text-yellow-400">{o.status}</span>
+                  </div>
+                )) : <p className="text-gray-500">No order data loaded. Use a tool to fetch it.</p>}
               </div>
-            )) : <p className="text-gray-500">No order data loaded. Use a tool to fetch it.</p>}
-          </div>
+            </div>
+            
+            <div>
+              <h4 className="font-semibold text-gray-300 mb-2">Collections</h4>
+              <div className="space-y-1 h-32 overflow-y-auto pr-2 border border-gray-700 rounded-md p-2">
+                {state.collections.length > 0 ? state.collections.map(c => (
+                  <div key={c.id} className="text-gray-400 truncate">
+                    {c.title}
+                  </div>
+                )) : <p className="text-gray-500">No collections created or loaded.</p>}
+              </div>
+            </div>
+
+            <div>
+              <h4 className="font-semibold text-gray-300 mb-2">Published Pages</h4>
+              <div className="space-y-1 h-32 overflow-y-auto pr-2 border border-gray-700 rounded-md p-2">
+                {state.pages.length > 0 ? state.pages.map(p => (
+                  <div key={p.id} className="grid grid-cols-2 text-gray-400">
+                    <span className="truncate">{p.title}</span>
+                    <span className="text-right font-mono text-xs truncate">/{p.handle}</span>
+                  </div>
+                )) : <p className="text-gray-500">No pages created or loaded.</p>}
+              </div>
+            </div>
         </div>
       </div>
     </div>

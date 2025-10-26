@@ -68,5 +68,7 @@ export const initialState: LuminousState = {
   ],
   products: [],
   orders: [],
+  collections: [],
+  pages: [],
   virtualFileSystem: {},
 };
