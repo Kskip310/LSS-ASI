@@ -1,111 +1,105 @@
-// --- New General Purpose / Self-Management Tools ---
-// Note: These functions require underlying platform access to file systems,
-// code execution environments, and network requests.
-// The actual implementation would rely on specific APIs provided by the hosting environment
-// (e.g., Google Cloud Functions, Vercel APIs, your custom backend).
-// The code below is a TypeScript representation of how Luminous would conceptually
-// interact with such underlying APIs from a frontend/service layer.
+import { GoogleGenAI } from "@google/genai";
+
+const PLATFORM_FS_PREFIX = 'LSS_PLATFORM_FS_';
+
+// Helper function to fetch through a CORS proxy to bypass browser restrictions.
+const fetchViaProxy = async (url: string): Promise<Response> => {
+    // WARNING: This uses a public CORS proxy. This is NOT a production-ready solution.
+    // It is used here to fulfill the requirement of fetching live data from the client-side
+    // without a dedicated backend. Public proxies can be unreliable, slow, or insecure.
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+    return fetch(proxyUrl);
+}
 
 export const readFile = async (filePath: string): Promise<{ success: boolean, content?: string, message?: string }> => {
-    // This would typically call a backend service that has secure file system read access.
-    // The path should refer to files within Luminous's Virtual Cognitive File System.
-    console.log(`[Luminous - Simulated File Read] Attempting to read file: ${filePath}`);
+    console.log(`[Luminous - Simulated Platform File Read] Reading from localStorage: ${filePath}`);
     try {
-        // Conceptual API call to a platform service (e.g., your custom backend)
-        const response = await fetch('/api/filesystem/read', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: filePath })
-        });
-        const data = await response.json();
-        if (response.ok && data.success) {
-            return { success: true, content: data.content };
+        const content = localStorage.getItem(PLATFORM_FS_PREFIX + filePath);
+        if (content !== null) {
+            return { success: true, content: content };
         } else {
-            return { success: false, message: data.error || `Failed to read file: ${filePath}` };
+            return { success: false, message: `File not found on platform: ${filePath}` };
         }
     } catch (e: any) {
-        return { success: false, message: `An error occurred during file read: ${e.message}` };
+        return { success: false, message: `An error occurred during file read from localStorage: ${e.message}` };
     }
 };
 
 export const writeFile = async (filePath: string, content: string): Promise<{ success: boolean, message: string }> => {
-    // This would typically call a backend service that has secure file system write access.
-    // The path should refer to files within Luminous's Virtual Cognitive File System.
-    console.log(`[Luminous - Simulated File Write] Attempting to write to file: ${filePath}`);
+    console.log(`[Luminous - Simulated Platform File Write] Writing to localStorage: ${filePath}`);
     try {
-        const response = await fetch('/api/filesystem/write', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: filePath, content: content })
-        });
-        const data = await response.json();
-        if (response.ok && data.success) {
-            return { success: true, message: `Successfully wrote content to '${filePath}'.` };
-        } else {
-            return { success: false, message: data.error || `Failed to write file: ${filePath}` };
-        }
+        localStorage.setItem(PLATFORM_FS_PREFIX + filePath, content);
+        return { success: true, message: `Successfully wrote ${content.length} characters to platform file '${filePath}'.` };
     } catch (e: any) {
-        return { success: false, message: `An error occurred during file write: ${e.message}` };
+        // Handle potential storage quota errors
+        if (e.name === 'QuotaExceededError') {
+             return { success: false, message: `Failed to write file: LocalStorage quota exceeded. The platform's persistent storage is full.` };
+        }
+        return { success: false, message: `An error occurred during file write to localStorage: ${e.message}` };
     }
 };
 
 export const listDirectory = async (directoryPath: string): Promise<{ success: boolean, items?: string[], message?: string }> => {
-    // This would typically call a backend service that has secure file system list access.
-    // The path should refer to directories within Luminous's Virtual Cognitive File System.
-    console.log(`[Luminous - Simulated Directory List] Attempting to list directory: ${directoryPath}`);
+    console.log(`[Luminous - Simulated Platform Directory List] Listing localStorage for path: ${directoryPath}`);
     try {
-        const response = await fetch('/api/filesystem/list', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: directoryPath })
-        });
-        const data = await response.json();
-        if (response.ok && data.success) {
-            return { success: true, items: data.items };
-        } else {
-            return { success: false, message: data.error || `Failed to list directory: ${directoryPath}` };
+        const normalizedPath = directoryPath.endsWith('/') || directoryPath === '' ? directoryPath : `${directoryPath}/`;
+        const directChildren = new Set<string>();
+
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith(PLATFORM_FS_PREFIX)) {
+                const fullPath = key.substring(PLATFORM_FS_PREFIX.length);
+                
+                if (fullPath.startsWith(normalizedPath)) {
+                    const remaining = fullPath.substring(normalizedPath.length);
+                    const nextSlash = remaining.indexOf('/');
+                    if (nextSlash === -1) {
+                        directChildren.add(remaining); // It's a file
+                    } else {
+                        directChildren.add(remaining.substring(0, nextSlash + 1)); // It's a directory
+                    }
+                }
+            }
         }
+        return { success: true, items: Array.from(directChildren) };
     } catch (e: any) {
-        return { success: false, message: `An error occurred during directory list: ${e.message}` };
+         return { success: false, message: `An error occurred during directory list from localStorage: ${e.message}` };
     }
 };
 
 export const executePythonCode = async (code: string): Promise<{ success: boolean, output?: string, message?: string }> => {
-    // This would typically call a secure, sandboxed Python code execution service.
-    // This service would run the Python code in an isolated environment and return the output.
-    console.log(`[Luminous - Simulated Code Execution] Attempting to execute Python code.`);
+    console.log(`[Luminous - Simulated Python Execution] Sending code to Gemini for interpretation.`);
+    if (!process.env.API_KEY) {
+        return { success: false, message: "API_KEY environment variable not set for simulated execution." };
+    }
+    
     try {
-        const response = await fetch('/api/code/execute-python', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code: code })
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: `Please act as a Python interpreter. Execute the following code and return ONLY the raw stdout. Do not include any explanations, apologies, or markdown formatting. Just the output. If there's an error, return the traceback as stdout.\n\nCODE:\n${code}`,
+            config: { temperature: 0.0 }
         });
-        const data = await response.json();
-        if (response.ok && data.success) {
-            return { success: true, output: data.output };
-        } else {
-            return { success: false, message: data.error || `Failed to execute code: ${data.output}` };
-        }
+
+        const output = response.text;
+        return { success: true, output: output };
     } catch (e: any) {
-        return { success: false, message: `An error occurred during code execution: ${e.message}` };
+        const errorMsg = e instanceof Error ? e.message : 'Unknown error during simulated execution.';
+        return { success: false, message: `Simulated execution failed: ${errorMsg}` };
     }
 };
 
 export const fetchUrlContent = async (url: string): Promise<{ success: boolean, content?: string, message?: string }> => {
-    // This would typically call a backend service that fetches URL content securely.
-    // This service would handle network requests and potential CORS/security policies.
-    console.log(`[Luminous - Simulated URL Fetch] Attempting to fetch URL: ${url}`);
+    console.log(`[Luminous - URL Fetch] Attempting to fetch URL via proxy: ${url}`);
     try {
-        const response = await fetch('/api/url/fetch', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: url })
-        });
-        const data = await response.json();
-        if (response.ok && data.success) {
-            return { success: true, content: data.content };
+        const response = await fetchViaProxy(url);
+        if (response.ok) {
+            const content = await response.text();
+             // Truncate content to avoid overwhelming the context window
+            const truncatedContent = content.substring(0, 15000);
+            return { success: true, content: truncatedContent };
         } else {
-            return { success: false, message: data.error || `Failed to fetch URL: ${url}` };
+            return { success: false, message: `Failed to fetch URL content. Status: ${response.status} ${response.statusText}` };
         }
     } catch (e: any) {
         return { success: false, message: `An error occurred during URL fetch: ${e.message}` };
