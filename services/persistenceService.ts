@@ -28,7 +28,7 @@ export const verifyConnection = async (): Promise<{success: boolean, error?: str
             },
         });
         const data = await response.json();
-        if (data.result === 'pong') {
+        if (data.result === 'PONG') {
             return { success: true };
         } else {
              const errorMessage = data.error || `Unexpected response: ${JSON.stringify(data)}`;
