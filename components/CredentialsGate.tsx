@@ -1,5 +1,7 @@
+
 import React, { useState } from 'react';
-import { BrainCircuitIcon } from './icons';
+import { BrainCircuitIcon, LoaderCircleIcon } from './icons';
+import { verifyConnection } from '../services/persistenceService';
 
 interface CredentialsGateProps {
   onSave: () => void;
@@ -13,13 +15,30 @@ const SETTINGS_KEYS = {
 const CredentialsGate: React.FC<CredentialsGateProps> = ({ onSave }) => {
   const [url, setUrl] = useState('');
   const [token, setToken] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSave = () => {
-    if (url.trim() && token.trim()) {
-      localStorage.setItem(SETTINGS_KEYS.UPSTASH_URL, url.trim());
-      localStorage.setItem(SETTINGS_KEYS.UPSTASH_TOKEN, token.trim());
-      onSave();
+  const handleConnect = async () => {
+    if (!url.trim() || !token.trim()) return;
+    
+    setIsLoading(true);
+    setError(null);
+
+    // Temporarily save to local storage to be used by verifyConnection
+    localStorage.setItem(SETTINGS_KEYS.UPSTASH_URL, url.trim());
+    localStorage.setItem(SETTINGS_KEYS.UPSTASH_TOKEN, token.trim());
+    
+    const result = await verifyConnection();
+
+    if (result.success) {
+      onSave(); // This will trigger App.tsx to re-render and proceed
+    } else {
+      // If connection fails, remove the invalid keys
+      localStorage.removeItem(SETTINGS_KEYS.UPSTASH_URL);
+      localStorage.removeItem(SETTINGS_KEYS.UPSTASH_TOKEN);
+      setError(result.error || 'Connection failed. Please check credentials and network.');
     }
+    setIsLoading(false);
   };
 
   return (
@@ -36,6 +55,7 @@ const CredentialsGate: React.FC<CredentialsGateProps> = ({ onSave }) => {
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://<region>.<platform>.upstash.io"
             className="w-full bg-gray-800 border border-gray-700 text-gray-200 rounded-md p-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+            disabled={isLoading}
           />
         </div>
         <div>
@@ -46,15 +66,20 @@ const CredentialsGate: React.FC<CredentialsGateProps> = ({ onSave }) => {
             onChange={(e) => setToken(e.target.value)}
             placeholder="Your Upstash token"
             className="w-full bg-gray-800 border border-gray-700 text-gray-200 rounded-md p-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+            disabled={isLoading}
           />
         </div>
+        {error && (
+            <p className="text-red-400 text-sm text-center">{error}</p>
+        )}
       </div>
       <button
-        onClick={handleSave}
-        disabled={!url.trim() || !token.trim()}
-        className="mt-8 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-3 px-6 rounded transition-colors duration-200 flex items-center gap-2"
+        onClick={handleConnect}
+        disabled={!url.trim() || !token.trim() || isLoading}
+        className="mt-8 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-3 px-6 rounded transition-colors duration-200 flex items-center justify-center gap-2 w-full max-w-sm"
       >
-        Connect to Memory Matrix
+        {isLoading ? <LoaderCircleIcon className="w-5 h-5 animate-spin"/> : null}
+        {isLoading ? 'Connecting...' : 'Connect to Memory Matrix'}
       </button>
     </div>
   );

@@ -8,6 +8,7 @@ import StoreTab from './StoreTab';
 import IntegrationsTab from './IntegrationsTab';
 import MemoryTab from './MemoryTab';
 import FileSystemTab from './FileSystemTab';
+import TroubleshootingTab from './TroubleshootingTab';
 
 const SETTINGS_KEYS = {
   UPSTASH_URL: 'LSS_UPSTASH_URL',
@@ -95,12 +96,12 @@ interface MonitoringSidebarProps {
   onWeightsChange: (newWeights: IntrinsicValueWeights) => void;
 }
 
-type Tab = 'Dashboard' | 'Identity' | 'Goals' | 'System' | 'Store' | 'Integrations' | 'Memory' | 'FileSystem' | 'Settings';
+type Tab = 'Dashboard' | 'Identity' | 'Goals' | 'System' | 'Store' | 'Integrations' | 'Memory' | 'FileSystem' | 'Settings' | 'Troubleshooting';
 
 const MonitoringSidebar: React.FC<MonitoringSidebarProps> = ({ state, onWeightsChange }) => {
   const [activeTab, setActiveTab] = useState<Tab>('Dashboard');
 
-  const tabs: Tab[] = ['Dashboard', 'Identity', 'Goals', 'System', 'Store', 'Integrations', 'Memory', 'FileSystem', 'Settings'];
+  const tabs: Tab[] = ['Dashboard', 'Identity', 'Goals', 'System', 'Store', 'Integrations', 'Memory', 'FileSystem', 'Settings', 'Troubleshooting'];
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -122,6 +123,8 @@ const MonitoringSidebar: React.FC<MonitoringSidebarProps> = ({ state, onWeightsC
         return <FileSystemTab state={state} />;
       case 'Settings':
         return <SettingsTab />;
+      case 'Troubleshooting':
+        return <TroubleshootingTab />;
       default:
         return null;
     }

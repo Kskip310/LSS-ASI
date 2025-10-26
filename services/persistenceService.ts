@@ -1,3 +1,4 @@
+
 import { LuminousState } from '../types';
 
 const STATE_KEY = 'luminous_state';
@@ -12,6 +13,30 @@ const getCredentials = () => {
         return null;
     }
     return { url, token };
+}
+
+export const verifyConnection = async (): Promise<{success: boolean, error?: string}> => {
+    const creds = getCredentials();
+    if (!creds) {
+        return { success: false, error: "Credentials not found in local storage." };
+    }
+
+    try {
+        const response = await fetch(`${creds.url}/ping`, {
+            headers: {
+                Authorization: `Bearer ${creds.token}`,
+            },
+        });
+        const data = await response.json();
+        if (data.result === 'pong') {
+            return { success: true };
+        } else {
+             const errorMessage = data.error || `Unexpected response: ${JSON.stringify(data)}`;
+            return { success: false, error: `Connection failed: ${errorMessage}` };
+        }
+    } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : "An unknown network error occurred." };
+    }
 }
 
 export const getLuminousState = async (): Promise<LuminousState | null> => {
@@ -94,6 +119,24 @@ export const getBackupList = async (): Promise<string[]> => {
         return [];
     }
 };
+
+export const getLatestBackupKey = async (): Promise<string | null> => {
+    const creds = getCredentials();
+    if (!creds) return null;
+
+    try {
+        // LRANGE with start 0 and end 0 gets the first item (the latest pushed)
+        const response = await fetch(`${creds.url}/lrange/${BACKUP_LIST_KEY}/0/0`, {
+            headers: { Authorization: `Bearer ${creds.token}` },
+        });
+        if (!response.ok) return null;
+        const data = await response.json();
+        return data.result && data.result.length > 0 ? data.result[0] : null;
+    } catch (error) {
+        console.error("Error fetching latest backup key:", error);
+        return null;
+    }
+}
 
 export const restoreStateFromBackup = async (backupKey: string): Promise<void> => {
     const creds = getCredentials();

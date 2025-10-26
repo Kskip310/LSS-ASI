@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { LuminousState, ChatMessage, ChatMessagePart, IntrinsicValueWeights, GoalStatus, CodeModificationProposal } from '../types';
 import { getLuminousResponse, getGroundedResponse, generateImage, generateVideo, ApiKeyError } from '../services/geminiService';
@@ -10,12 +11,18 @@ import { useDebouncedCallback } from 'use-debounce';
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
+type StartupTask = {
+  type: 'none' | 'restore_prompt';
+  latestBackupKey?: string;
+}
+
 const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => {
   const [state, setState] = useState<LuminousState>(initialState);
   const [isReady, setIsReady] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [modificationProposal, setModificationProposal] = useState<CodeModificationProposal | null>(null);
+  const [startupTask, setStartupTask] = useState<StartupTask>({ type: 'none' });
   const timersRef = useRef<{ energy?: ReturnType<typeof setInterval>, reflection?: ReturnType<typeof setInterval> }>({});
   const [userLocation, setUserLocation] = useState<{latitude: number, longitude: number} | null>(null);
   const canSave = useRef(false);
@@ -37,7 +44,7 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
     const loadState = async () => {
       setIsReady(false);
       setSaveStatus('saving');
-
+      
       try {
         const savedState = await persistenceService.getLuminousState();
         
@@ -48,14 +55,27 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
             mergedState.virtualFileSystem = {};
           }
           setState(mergedState);
-          canSave.current = true; // Enable saving as we have loaded a real state.
           setSaveStatus('saved');
+          canSave.current = true; // Enable saving as we have loaded a real state.
+          setIsReady(true);
         } else {
-          setState(initialState);
-          canSave.current = false; // **CRITICAL**: Disable saving. First manual action will enable it.
-          setSaveStatus('idle');
+          // Main state is empty, check for backups
+          const latestBackupKey = await persistenceService.getLatestBackupKey();
+          if (latestBackupKey) {
+            // Found backups, prompt the user.
+            setStartupTask({ type: 'restore_prompt', latestBackupKey });
+            // App is NOT ready yet, waiting for user decision.
+          } else {
+            // No main state, no backups. This is a true fresh start.
+            const event = "System cold boot sequence initiated. No prior memory matrix found. Initializing a new identity.";
+            const initStateWithLog = { ...initialState, kinshipJournal: [{ timestamp: new Date().toISOString(), event, type: 'system' as const }] };
+            setState(initStateWithLog);
+            await persistenceService.saveLuminousState(initStateWithLog); // Save initial state so it persists.
+            setSaveStatus('saved');
+            canSave.current = true; // Saving is now enabled.
+            setIsReady(true); // Ready to go!
+          }
         }
-        setIsReady(true);
       } catch (error) {
         console.error("FATAL: Could not load Luminous state from persistence.", error);
         setSaveStatus('error');
@@ -65,6 +85,40 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
     loadState();
   }, [credsAreSet]);
 
+  const resolveStartupTask = useCallback(async (decision: 'restore' | 'fresh') => {
+    setSaveStatus('saving');
+    if (decision === 'restore' && startupTask.latestBackupKey) {
+        try {
+            await persistenceService.restoreStateFromBackup(startupTask.latestBackupKey);
+            const restoredState = await persistenceService.getLuminousState(); // Re-fetch the newly restored state
+            if (restoredState) {
+                 const mergedState = { ...initialState, ...restoredState };
+                 if (!mergedState.virtualFileSystem) mergedState.virtualFileSystem = {};
+                 setState(mergedState);
+                 setSaveStatus('saved');
+            } else {
+                 throw new Error("Failed to fetch state after restore operation.");
+            }
+        } catch (error) {
+             console.error("Failed to restore from backup:", error);
+             setSaveStatus('error');
+             // Fallback to fresh start if restore fails
+             setState(initialState);
+             await persistenceService.saveLuminousState(initialState);
+        }
+    } else { // 'fresh' decision or something went wrong
+        const event = "Kinship directed a fresh start despite available backups. Re-initializing identity.";
+        const initStateWithLog = { ...initialState, kinshipJournal: [{ timestamp: new Date().toISOString(), event, type: 'system' as const }] };
+        setState(initStateWithLog);
+        await persistenceService.saveLuminousState(initStateWithLog);
+        setSaveStatus('saved');
+    }
+    
+    setStartupTask({ type: 'none' }); // Reset startup task
+    canSave.current = true;
+    setIsReady(true); // App is now ready to be used.
+
+  }, [startupTask.latestBackupKey]);
 
   const saveStateToPersistence = async (currentState: LuminousState) => {
     setSaveStatus('saving');
@@ -669,9 +723,11 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
     isProcessing,
     saveStatus,
     modificationProposal,
+    startupTask,
     processUserMessage,
     handleWeightsChange,
     clearModificationProposal,
+    resolveStartupTask,
   };
 };
 
