@@ -15,6 +15,7 @@ const SETTINGS_KEYS = {
   UPSTASH_TOKEN: 'LSS_UPSTASH_TOKEN',
   SHOPIFY_DOMAIN: 'LSS_SHOPIFY_DOMAIN',
   SHOPIFY_TOKEN: 'LSS_SHOPIFY_TOKEN',
+  SHOPIFY_STOREFRONT_TOKEN: 'LSS_SHOPIFY_STOREFRONT_TOKEN',
 };
 
 const SettingsTab: React.FC = () => {
@@ -24,6 +25,7 @@ const SettingsTab: React.FC = () => {
         [SETTINGS_KEYS.UPSTASH_TOKEN]: '',
         [SETTINGS_KEYS.SHOPIFY_DOMAIN]: '',
         [SETTINGS_KEYS.SHOPIFY_TOKEN]: '',
+        [SETTINGS_KEYS.SHOPIFY_STOREFRONT_TOKEN]: '',
     });
     const [saved, setSaved] = useState(false);
 
@@ -33,6 +35,7 @@ const SettingsTab: React.FC = () => {
             [SETTINGS_KEYS.UPSTASH_TOKEN]: localStorage.getItem(SETTINGS_KEYS.UPSTASH_TOKEN) || '',
             [SETTINGS_KEYS.SHOPIFY_DOMAIN]: localStorage.getItem(SETTINGS_KEYS.SHOPIFY_DOMAIN) || '',
             [SETTINGS_KEYS.SHOPIFY_TOKEN]: localStorage.getItem(SETTINGS_KEYS.SHOPIFY_TOKEN) || '',
+            [SETTINGS_KEYS.SHOPIFY_STOREFRONT_TOKEN]: localStorage.getItem(SETTINGS_KEYS.SHOPIFY_STOREFRONT_TOKEN) || '',
         };
         setSettings(loadedSettings);
     }, []);
@@ -50,7 +53,7 @@ const SettingsTab: React.FC = () => {
         setSettings(prev => ({ ...prev, [key]: value }));
     };
 
-    const renderInput = (key: string, label: string, placeholder: string, isPassword = false) => (
+    const renderInput = (key: string, label: string, placeholder: string, isPassword = false, description?: string) => (
         <div>
             <label className="block mb-1 text-xs text-gray-400">{label}</label>
             <input
@@ -60,6 +63,7 @@ const SettingsTab: React.FC = () => {
                 placeholder={placeholder}
                 className="w-full bg-gray-700 text-gray-200 rounded-md p-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
             />
+            {description && <p className="text-gray-500 text-xs px-1 pt-1">{description}</p>}
         </div>
     );
 
@@ -75,7 +79,8 @@ const SettingsTab: React.FC = () => {
                     {renderInput(SETTINGS_KEYS.UPSTASH_URL, 'Upstash Redis URL', 'https://<region>.<platform>.upstash.io')}
                     {renderInput(SETTINGS_KEYS.UPSTASH_TOKEN, 'Upstash Redis Token', 'Your Upstash token', true)}
                     {renderInput(SETTINGS_KEYS.SHOPIFY_DOMAIN, 'Shopify Store Domain', 'your-store.myshopify.com')}
-                    {renderInput(SETTINGS_KEYS.SHOPIFY_TOKEN, 'Shopify Admin Access Token', 'Your Shopify token', true)}
+                    {renderInput(SETTINGS_KEYS.SHOPIFY_TOKEN, 'Shopify Admin Access Token', 'For managing orders, inventory, etc.', true)}
+                    {renderInput(SETTINGS_KEYS.SHOPIFY_STOREFRONT_TOKEN, 'Shopify Storefront Access Token', 'For reading public product data.', true, 'Used for public-facing data like reading product lists.')}
                 </div>
                 <div className="mt-6 flex justify-end">
                     <button

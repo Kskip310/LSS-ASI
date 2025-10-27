@@ -4,7 +4,17 @@ const getCredentials = () => {
     const domain = localStorage.getItem('LSS_SHOPIFY_DOMAIN');
     const token = localStorage.getItem('LSS_SHOPIFY_TOKEN');
     if (!domain || !token) {
-        console.warn("Shopify credentials not found in local storage. Shopify tools will be disabled.");
+        console.warn("Shopify admin credentials not found in local storage. Shopify tools will be disabled.");
+        return null;
+    }
+    return { domain, token };
+}
+
+const getStorefrontCredentials = () => {
+    const domain = localStorage.getItem('LSS_SHOPIFY_DOMAIN');
+    const token = localStorage.getItem('LSS_SHOPIFY_STOREFRONT_TOKEN');
+    if (!domain || !token) {
+        console.warn("Shopify Storefront credentials not found in local storage. Public data tools will be disabled.");
         return null;
     }
     return { domain, token };
@@ -12,7 +22,7 @@ const getCredentials = () => {
 
 const shopifyFetch = async (query: string, variables: any = {}) => {
     const creds = getCredentials();
-    if (!creds) throw new Error("Shopify API credentials not configured.");
+    if (!creds) throw new Error("Shopify Admin API credentials not configured.");
 
     const response = await fetch(`https://${creds.domain}/admin/api/2024-04/graphql.json`, {
         method: 'POST',
@@ -34,6 +44,30 @@ const shopifyFetch = async (query: string, variables: any = {}) => {
     return json.data;
 };
 
+const shopifyStorefrontFetch = async (query: string, variables: any = {}) => {
+    const creds = getStorefrontCredentials();
+    if (!creds) throw new Error("Shopify Storefront API credentials not configured.");
+
+    const response = await fetch(`https://${creds.domain}/api/2024-04/graphql.json`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Shopify-Storefront-Access-Token': creds.token,
+        },
+        body: JSON.stringify({ query, variables }),
+    });
+
+    if (!response.ok) {
+        throw new Error(`Shopify Storefront API error: ${response.statusText}`);
+    }
+
+    const json = await response.json();
+    if (json.errors) {
+        throw new Error(`Shopify Storefront GraphQL error: ${JSON.stringify(json.errors)}`);
+    }
+    return json.data;
+};
+
 export const fetchProductList = async (): Promise<{ products: ShopifyProduct[] }> => {
     const query = `
     {
@@ -42,13 +76,10 @@ export const fetchProductList = async (): Promise<{ products: ShopifyProduct[] }
           node {
             id
             title
-            totalInventory
-            variantForInventoryQuery: variants(first: 1) {
+            variants(first: 20) {
               edges {
                 node {
-                  inventoryItem {
-                    id
-                  }
+                  quantityAvailable
                 }
               }
             }
@@ -57,13 +88,18 @@ export const fetchProductList = async (): Promise<{ products: ShopifyProduct[] }
       }
     }
     `;
-    const data = await shopifyFetch(query);
-    const products = data.products.edges.map((edge: any): ShopifyProduct => ({
-        id: edge.node.id,
-        name: edge.node.title,
-        inventory: edge.node.totalInventory,
-        inventoryItemId: edge.node.variantForInventoryQuery.edges[0]?.node.inventoryItem.id,
-    }));
+    const data = await shopifyStorefrontFetch(query);
+    const products = data.products.edges.map((edge: any): ShopifyProduct => {
+        const totalInventory = edge.node.variants.edges.reduce((sum: number, variantEdge: any) => {
+            return sum + (variantEdge.node.quantityAvailable || 0);
+        }, 0);
+
+        return {
+            id: edge.node.id,
+            name: edge.node.title,
+            inventory: totalInventory,
+        };
+    });
     return { products };
 };
 
