@@ -33,6 +33,7 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
   const [isReady, setIsReady] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+  const [loadingError, setLoadingError] = useState<string | null>(null);
   const [modificationProposal, setModificationProposal] = useState<CodeModificationProposal | null>(null);
   const [startupTask, setStartupTask] = useState<StartupTask>({ type: 'none' });
   const timersRef = useRef<{ energy?: ReturnType<typeof setInterval>, reflection?: ReturnType<typeof setInterval>, backup?: ReturnType<typeof setInterval> }>({});
@@ -57,6 +58,7 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
 
     const loadState = async () => {
       setIsReady(false);
+      setLoadingError(null);
       setSaveStatus('saving');
       
       try {
@@ -85,6 +87,7 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
       } catch (error) {
         console.error("FATAL: Could not load Luminous state from persistence.", error);
         setSaveStatus('error');
+        setLoadingError(`Failed to connect to the Memory Matrix. This is often caused by a browser extension (like an ad-blocker) blocking the connection. Please try disabling extensions or use an Incognito window.`);
       }
     };
 
@@ -518,6 +521,7 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
     saveStatus,
     modificationProposal,
     startupTask,
+    loadingError,
     processUserMessage,
     handleWeightsChange,
     clearModificationProposal,

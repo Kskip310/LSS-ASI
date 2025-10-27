@@ -4,7 +4,7 @@ import useLuminousCognition from './hooks/useLuminousCognition';
 import Header from './components/Header';
 import ChatInterface from './components/ChatInterface';
 import MonitoringSidebar from './components/MonitoringSidebar';
-import { BrainCircuitIcon, FilmIcon } from './components/icons';
+import { BrainCircuitIcon, FilmIcon, AlertTriangleIcon } from './components/icons';
 import CredentialsGate from './components/CredentialsGate';
 import CodeModificationModal from './components/CodeModificationModal';
 import RestoreBackupModal from './components/RestoreBackupModal';
@@ -72,7 +72,8 @@ const App: React.FC = () => {
         modificationProposal,
         clearModificationProposal,
         startupTask,
-        resolveStartupTask
+        resolveStartupTask,
+        loadingError
     } = useLuminousCognition(resetVeoKey, credsAreSet);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
@@ -84,6 +85,25 @@ const App: React.FC = () => {
                 latestBackupKey={startupTask.latestBackupKey}
                 onResolve={resolveStartupTask}
             />
+        );
+    }
+
+    if (loadingError) {
+        return (
+            <div className="flex flex-col h-screen font-sans items-center justify-center bg-gray-900 text-gray-100 p-4 text-center">
+                <AlertTriangleIcon className="w-16 h-16 text-red-500" />
+                <h1 className="mt-4 text-2xl font-bold tracking-wider">Connection Failed</h1>
+                <p className="text-gray-400 mt-2 max-w-lg">{loadingError}</p>
+                <p className="text-gray-500 text-sm mt-2">
+                    For detailed instructions, please refer to the "Troubleshooting" tab in the monitoring sidebar once you are able to connect.
+                </p>
+                <button
+                    onClick={() => window.location.reload()}
+                    className="mt-6 bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded transition-colors duration-200"
+                >
+                    Retry Connection
+                </button>
+            </div>
         );
     }
 
