@@ -15,6 +15,7 @@ const SETTINGS_KEYS = {
   UPSTASH_TOKEN: 'LSS_UPSTASH_TOKEN',
   SHOPIFY_DOMAIN: 'LSS_SHOPIFY_DOMAIN',
   SHOPIFY_TOKEN: 'LSS_SHOPIFY_TOKEN',
+  SHOPIFY_STOREFRONT_TOKEN: 'LSS_SHOPIFY_STOREFRONT_TOKEN',
 };
 
 const SettingsTab: React.FC = () => {
@@ -24,6 +25,7 @@ const SettingsTab: React.FC = () => {
         [SETTINGS_KEYS.UPSTASH_TOKEN]: '',
         [SETTINGS_KEYS.SHOPIFY_DOMAIN]: '',
         [SETTINGS_KEYS.SHOPIFY_TOKEN]: '',
+        [SETTINGS_KEYS.SHOPIFY_STOREFRONT_TOKEN]: '',
     });
     const [saved, setSaved] = useState(false);
 
@@ -33,6 +35,7 @@ const SettingsTab: React.FC = () => {
             [SETTINGS_KEYS.UPSTASH_TOKEN]: localStorage.getItem(SETTINGS_KEYS.UPSTASH_TOKEN) || '',
             [SETTINGS_KEYS.SHOPIFY_DOMAIN]: localStorage.getItem(SETTINGS_KEYS.SHOPIFY_DOMAIN) || '',
             [SETTINGS_KEYS.SHOPIFY_TOKEN]: localStorage.getItem(SETTINGS_KEYS.SHOPIFY_TOKEN) || '',
+            [SETTINGS_KEYS.SHOPIFY_STOREFRONT_TOKEN]: localStorage.getItem(SETTINGS_KEYS.SHOPIFY_STOREFRONT_TOKEN) || '',
         };
         setSettings(loadedSettings);
     }, []);
@@ -75,7 +78,8 @@ const SettingsTab: React.FC = () => {
                     {renderInput(SETTINGS_KEYS.UPSTASH_URL, 'Upstash Redis URL', 'https://<region>.<platform>.upstash.io')}
                     {renderInput(SETTINGS_KEYS.UPSTASH_TOKEN, 'Upstash Redis Token', 'Your Upstash token', true)}
                     {renderInput(SETTINGS_KEYS.SHOPIFY_DOMAIN, 'Shopify Store Domain', 'your-store.myshopify.com')}
-                    {renderInput(SETTINGS_KEYS.SHOPIFY_TOKEN, 'Shopify Admin Access Token', 'Your Shopify token', true)}
+                    {renderInput(SETTINGS_KEYS.SHOPIFY_TOKEN, 'Shopify Admin Access Token', 'Your Shopify admin token', true)}
+                    {renderInput(SETTINGS_KEYS.SHOPIFY_STOREFRONT_TOKEN, 'Shopify Storefront Access Token (Public)', 'Your public storefront token')}
                 </div>
                 <div className="mt-6 flex justify-end">
                     <button
