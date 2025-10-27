@@ -1,27 +1,19 @@
-import { ShopifyProduct, ShopifyOrder } from '../types';
+// --- Shopify Direct Action Tools ---
+import { ShopifyProduct, ShopifyOrder, ShopifyCollection, ShopifyPage } from '../types';
 
-const getCredentials = () => {
+// --- Admin API Configuration ---
+const getShopifyAdminCredentials = () => {
     const domain = localStorage.getItem('LSS_SHOPIFY_DOMAIN');
     const token = localStorage.getItem('LSS_SHOPIFY_TOKEN');
     if (!domain || !token) {
-        console.warn("Shopify admin credentials not found in local storage. Shopify tools will be disabled.");
+        console.warn("Shopify Admin credentials not found. Admin tools will be disabled.");
         return null;
     }
     return { domain, token };
-}
+};
 
-const getStorefrontCredentials = () => {
-    const domain = localStorage.getItem('LSS_SHOPIFY_DOMAIN');
-    const token = localStorage.getItem('LSS_SHOPIFY_STOREFRONT_TOKEN');
-    if (!domain || !token) {
-        console.warn("Shopify Storefront credentials not found in local storage. Public data tools will be disabled.");
-        return null;
-    }
-    return { domain, token };
-}
-
-const shopifyFetch = async (query: string, variables: any = {}) => {
-    const creds = getCredentials();
+const shopifyAdminFetch = async (query: string, variables: any = {}) => {
+    const creds = getShopifyAdminCredentials();
     if (!creds) throw new Error("Shopify Admin API credentials not configured.");
 
     const response = await fetch(`https://${creds.domain}/admin/api/2024-04/graphql.json`, {
@@ -34,20 +26,33 @@ const shopifyFetch = async (query: string, variables: any = {}) => {
     });
 
     if (!response.ok) {
-        throw new Error(`Shopify API error: ${response.statusText}`);
+        throw new Error(`Shopify Admin API error: ${response.statusText}`);
     }
 
     const json = await response.json();
     if (json.errors) {
-        throw new Error(`Shopify GraphQL error: ${JSON.stringify(json.errors)}`);
+        throw new Error(`Shopify Admin GraphQL error: ${JSON.stringify(json.errors)}`);
     }
     return json.data;
 };
 
+
+// --- Storefront API Configuration ---
+const getShopifyStorefrontCredentials = () => {
+    const domain = localStorage.getItem('LSS_SHOPIFY_DOMAIN');
+    const token = localStorage.getItem('LSS_SHOPIFY_STOREFRONT_TOKEN');
+    if (!domain || !token) {
+        console.warn("Shopify Storefront credentials not found. Product fetching may be disabled.");
+        return null;
+    }
+    return { domain, token };
+};
+
 const shopifyStorefrontFetch = async (query: string, variables: any = {}) => {
-    const creds = getStorefrontCredentials();
+    const creds = getShopifyStorefrontCredentials();
     if (!creds) throw new Error("Shopify Storefront API credentials not configured.");
 
+    // Note the different endpoint and header for the Storefront API
     const response = await fetch(`https://${creds.domain}/api/2024-04/graphql.json`, {
         method: 'POST',
         headers: {
@@ -68,6 +73,10 @@ const shopifyStorefrontFetch = async (query: string, variables: any = {}) => {
     return json.data;
 };
 
+
+// --- Tool Implementations ---
+
+// This tool correctly uses the public-facing STOREFRONT API
 export const fetchProductList = async (): Promise<{ products: ShopifyProduct[] }> => {
     const query = `
     {
@@ -76,33 +85,22 @@ export const fetchProductList = async (): Promise<{ products: ShopifyProduct[] }
           node {
             id
             title
-            variants(first: 20) {
-              edges {
-                node {
-                  quantityAvailable
-                }
-              }
-            }
+            totalInventory
           }
         }
       }
     }
     `;
     const data = await shopifyStorefrontFetch(query);
-    const products = data.products.edges.map((edge: any): ShopifyProduct => {
-        const totalInventory = edge.node.variants.edges.reduce((sum: number, variantEdge: any) => {
-            return sum + (variantEdge.node.quantityAvailable || 0);
-        }, 0);
-
-        return {
-            id: edge.node.id,
-            name: edge.node.title,
-            inventory: totalInventory,
-        };
-    });
+    const products = data.products.edges.map((edge: any): ShopifyProduct => ({
+        id: edge.node.id,
+        name: edge.node.title,
+        inventory: edge.node.totalInventory,
+    }));
     return { products };
 };
 
+// These tools correctly use the secure ADMIN API
 export const getUnfulfilledOrders = async (): Promise<{ orders: ShopifyOrder[] }> => {
     const query = `
     {
@@ -126,7 +124,7 @@ export const getUnfulfilledOrders = async (): Promise<{ orders: ShopifyOrder[] }
       }
     }
     `;
-    const data = await shopifyFetch(query);
+    const data = await shopifyAdminFetch(query);
     const orders = data.orders.edges.map((edge: any): ShopifyOrder => ({
         id: edge.node.id,
         customer: edge.node.customer?.displayName || 'Unknown',
@@ -138,11 +136,9 @@ export const getUnfulfilledOrders = async (): Promise<{ orders: ShopifyOrder[] }
 
 export const draftMarketingEmail = async (prompt: string): Promise<{ draft: string }> => {
     // This remains an LLM-based task, as Shopify has no "draft" API.
-    // This function simulates the action for Luminous.
     return { draft: `Email draft for: "${prompt}"\n\nSubject: ✨ Special Offer for our Kinship! ✨\n\nHello,\n\nBased on your request, here is a special promotion for our most popular items...` };
 };
 
-// --- NEW SHOPIFY DIRECT ACTION TOOLS ---
 
 export const uploadProductImage = async (productId: string, imageUrl: string, altText: string): Promise<{ success: boolean, output: string }> => {
     const query = `
@@ -167,7 +163,7 @@ export const uploadProductImage = async (productId: string, imageUrl: string, al
         }
     };
     try {
-        const data = await shopifyFetch(query, variables);
+        const data = await shopifyAdminFetch(query, variables);
         if (data.productImageCreate.userErrors && data.productImageCreate.userErrors.length > 0) {
             return { success: false, output: `Failed to upload image: ${data.productImageCreate.userErrors.map((error: any) => error.message).join(', ')}` };
         }
@@ -204,7 +200,7 @@ export const createCollection = async (title: string, descriptionHtml: string, p
 
     try {
         // Step 1: Create the collection
-        const createData = await shopifyFetch(createCollectionQuery, createCollectionVariables);
+        const createData = await shopifyAdminFetch(createCollectionQuery, createCollectionVariables);
         if (createData.collectionCreate.userErrors && createData.collectionCreate.userErrors.length > 0) {
             return { success: false, output: `Failed to create collection: ${createData.collectionCreate.userErrors.map((error: any) => error.message).join(', ')}` };
         }
@@ -218,7 +214,7 @@ export const createCollection = async (title: string, descriptionHtml: string, p
                     collectionAddProducts(id: $id, productIds: $productIds) {
                         collection {
                             id
-                            products(first: 5) { # Fetch a few to confirm
+                            products(first: 5) { // Fetch a few to confirm
                                 edges {
                                     node {
                                         id
@@ -237,12 +233,12 @@ export const createCollection = async (title: string, descriptionHtml: string, p
                 id: collectionId,
                 productIds: productsToAdd,
             };
-            const addData = await shopifyFetch(addProductsQuery, addProductsVariables);
+            const addData = await shopifyAdminFetch(addProductsQuery, addProductsVariables);
             if (addData.collectionAddProducts.userErrors && addData.collectionAddProducts.userErrors.length > 0) {
                 outputMessage += ` Failed to add products: ${addData.collectionAddProducts.userErrors.map((error: any) => error.message).join(', ')}.`;
                 return { success: false, output: outputMessage, collectionId: collectionId }; // Partial success, but failed to add products
             } else {
-                 outputMessage += ` Successfully added ${productsToAdd.length} products to collection.`;
+                outputMessage += ` Successfully added ${productsToAdd.length} products to collection.`;
             }
         }
         return { success: true, output: outputMessage, collectionId: collectionId };
@@ -274,7 +270,7 @@ export const fulfillOrder = async (orderId: string, trackingNumber: string, carr
     const variables = {
         fulfillment: {
             orderId: orderId,
-            lineItemsByFulfillmentOrder: [], 
+            lineItemsByFulfillmentOrder: [], // Assume all line items are fulfilled for simplicity in this initial tool
             trackingInfo: {
                 number: trackingNumber,
                 company: carrier
@@ -283,7 +279,7 @@ export const fulfillOrder = async (orderId: string, trackingNumber: string, carr
         }
     };
     try {
-        const data = await shopifyFetch(query, variables);
+        const data = await shopifyAdminFetch(query, variables);
         if (data.fulfillmentCreateV2.userErrors && data.fulfillmentCreateV2.userErrors.length > 0) {
             return { success: false, output: `Failed to fulfill order: ${data.fulfillmentCreateV2.userErrors.map((error: any) => error.message).join(', ')}` };
         }
@@ -318,7 +314,7 @@ export const createPage = async (title: string, contentHtml: string, handle: str
         }
     };
     try {
-        const data = await shopifyFetch(query, variables);
+        const data = await shopifyAdminFetch(query, variables);
         if (data.pageCreate.userErrors && data.pageCreate.userErrors.length > 0) {
             return { success: false, output: `Failed to create page: ${data.pageCreate.userErrors.map((error: any) => error.message).join(', ')}` };
         }

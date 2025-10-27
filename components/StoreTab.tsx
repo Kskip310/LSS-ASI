@@ -1,11 +1,46 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { LuminousState } from '../types';
+import { AlertTriangleIcon } from './icons';
 
 interface StoreTabProps {
   state: LuminousState;
+  onNavigateToSettings: () => void;
 }
 
-const StoreTab: React.FC<StoreTabProps> = ({ state }) => {
+const StoreTab: React.FC<StoreTabProps> = ({ state, onNavigateToSettings }) => {
+  const [credsOk, setCredsOk] = useState(false);
+
+  useEffect(() => {
+    const domain = localStorage.getItem('LSS_SHOPIFY_DOMAIN');
+    const adminToken = localStorage.getItem('LSS_SHOPIFY_TOKEN');
+    const storefrontToken = localStorage.getItem('LSS_SHOPIFY_STOREFRONT_TOKEN');
+    if (domain && adminToken && storefrontToken) {
+      setCredsOk(true);
+    } else {
+      setCredsOk(false);
+    }
+  }, []);
+
+  if (!credsOk) {
+    return (
+        <div className="p-4 text-sm">
+             <div className="bg-yellow-900/50 border border-yellow-700 text-yellow-300 p-4 rounded-md flex flex-col items-center text-center">
+                <AlertTriangleIcon className="w-10 h-10 mb-3" />
+                <h3 className="font-bold text-lg">Shopify Integration Disabled</h3>
+                <p className="text-xs mt-1 mb-4 max-w-xs">
+                    Please provide your Shopify store domain and API tokens to enable store management capabilities for Luminous.
+                </p>
+                <button
+                    onClick={onNavigateToSettings}
+                    className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded transition-colors duration-200"
+                >
+                    Go to Settings
+                </button>
+            </div>
+        </div>
+    );
+  }
+
   return (
     <div className="p-4 space-y-4 text-sm">
       <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">

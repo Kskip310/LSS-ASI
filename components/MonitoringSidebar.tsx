@@ -119,7 +119,7 @@ const MonitoringSidebar: React.FC<MonitoringSidebarProps> = ({ state, onWeightsC
       case 'System':
         return <SystemTab state={state} />;
       case 'Store':
-        return <StoreTab state={state} />;
+        return <StoreTab state={state} onNavigateToSettings={() => setActiveTab('Settings')} />;
       case 'Integrations':
         return <IntegrationsTab />;
       case 'Memory':
