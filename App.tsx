@@ -5,30 +5,11 @@ import Header from './components/Header';
 import ChatInterface from './components/ChatInterface';
 import MonitoringSidebar from './components/MonitoringSidebar';
 import { BrainCircuitIcon, FilmIcon } from './components/icons';
-import CredentialsGate from './components/CredentialsGate';
 import CodeModificationModal from './components/CodeModificationModal';
 
 const App: React.FC = () => {
     const [isVeoKeyNeeded, setIsVeoKeyNeeded] = useState(false);
     const [isVeoCheckDone, setIsVeoCheckDone] = useState(false);
-
-    const [credsAreSet, setCredsAreSet] = useState(false);
-    const [credsChecked, setCredsChecked] = useState(false);
-
-    const checkCredentials = useCallback(() => {
-        const url = localStorage.getItem('LSS_UPSTASH_URL');
-        const token = localStorage.getItem('LSS_UPSTASH_TOKEN');
-        if (url && token) {
-            setCredsAreSet(true);
-        } else {
-            setCredsAreSet(false);
-        }
-        setCredsChecked(true);
-    }, []);
-
-    useEffect(() => {
-        checkCredentials();
-    }, [checkCredentials]);
 
     const checkVeoKey = useCallback(async () => {
         if (window.aistudio && typeof window.aistudio.hasSelectedApiKey === 'function') {
@@ -70,12 +51,12 @@ const App: React.FC = () => {
         saveStatus,
         modificationProposal,
         clearModificationProposal
-    } = useLuminousCognition(resetVeoKey, credsAreSet);
+    } = useLuminousCognition(resetVeoKey);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
     const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
-    if (!credsChecked || !isVeoCheckDone || (credsAreSet && !isReady)) {
+    if (!isVeoCheckDone || !isReady) {
         return (
             <div className="flex flex-col h-screen font-sans items-center justify-center bg-gray-900 text-gray-100">
                 <BrainCircuitIcon className="w-16 h-16 text-purple-400 animate-pulse" />
@@ -83,10 +64,6 @@ const App: React.FC = () => {
                 <p className="text-gray-400">Establishing connection to persistent state matrix.</p>
             </div>
         )
-    }
-
-    if (!credsAreSet) {
-        return <CredentialsGate onSave={checkCredentials} />;
     }
 
     if (isVeoKeyNeeded) {

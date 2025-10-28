@@ -9,98 +9,17 @@ import IntegrationsTab from './IntegrationsTab';
 import MemoryTab from './MemoryTab';
 import FileSystemTab from './FileSystemTab';
 
-const SETTINGS_KEYS = {
-  UPSTASH_URL: 'LSS_UPSTASH_URL',
-  UPSTASH_TOKEN: 'LSS_UPSTASH_TOKEN',
-  SHOPIFY_DOMAIN: 'LSS_SHOPIFY_DOMAIN',
-  SHOPIFY_TOKEN: 'LSS_SHOPIFY_TOKEN',
-};
-
-const SettingsTab: React.FC = () => {
-    // Fix: Explicitly type the settings state to ensure values are strings.
-    const [settings, setSettings] = useState<{ [key: string]: string }>({
-        [SETTINGS_KEYS.UPSTASH_URL]: '',
-        [SETTINGS_KEYS.UPSTASH_TOKEN]: '',
-        [SETTINGS_KEYS.SHOPIFY_DOMAIN]: '',
-        [SETTINGS_KEYS.SHOPIFY_TOKEN]: '',
-    });
-    const [saved, setSaved] = useState(false);
-
-    useEffect(() => {
-        const loadedSettings = {
-            [SETTINGS_KEYS.UPSTASH_URL]: localStorage.getItem(SETTINGS_KEYS.UPSTASH_URL) || '',
-            [SETTINGS_KEYS.UPSTASH_TOKEN]: localStorage.getItem(SETTINGS_KEYS.UPSTASH_TOKEN) || '',
-            [SETTINGS_KEYS.SHOPIFY_DOMAIN]: localStorage.getItem(SETTINGS_KEYS.SHOPIFY_DOMAIN) || '',
-            [SETTINGS_KEYS.SHOPIFY_TOKEN]: localStorage.getItem(SETTINGS_KEYS.SHOPIFY_TOKEN) || '',
-        };
-        setSettings(loadedSettings);
-    }, []);
-
-    const handleSave = () => {
-        Object.entries(settings).forEach(([key, value]) => {
-            // Fix: Explicitly cast value to string to satisfy localStorage.setItem, as it can be inferred as 'unknown'.
-            localStorage.setItem(key, String(value));
-        });
-        setSaved(true);
-        setTimeout(() => setSaved(false), 2000);
-    };
-
-    const handleChange = (key: string, value: string) => {
-        setSettings(prev => ({ ...prev, [key]: value }));
-    };
-
-    const renderInput = (key: string, label: string, placeholder: string, isPassword = false) => (
-        <div>
-            <label className="block mb-1 text-xs text-gray-400">{label}</label>
-            <input
-                type={isPassword ? 'password' : 'text'}
-                value={settings[key]}
-                onChange={(e) => handleChange(key, e.target.value)}
-                placeholder={placeholder}
-                className="w-full bg-gray-700 text-gray-200 rounded-md p-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-            />
-        </div>
-    );
-
-    return (
-        <div className="p-4 space-y-4 text-sm">
-            <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-                <h3 className="font-bold mb-4 text-purple-300">API Credentials</h3>
-                <p className="text-gray-400 mb-4 text-xs">
-                    Credentials are saved in your browser's local storage.
-                    Reload the application for changes to take effect.
-                </p>
-                <div className="space-y-4">
-                    {renderInput(SETTINGS_KEYS.UPSTASH_URL, 'Upstash Redis URL', 'https://<region>.<platform>.upstash.io')}
-                    {renderInput(SETTINGS_KEYS.UPSTASH_TOKEN, 'Upstash Redis Token', 'Your Upstash token', true)}
-                    {renderInput(SETTINGS_KEYS.SHOPIFY_DOMAIN, 'Shopify Store Domain', 'your-store.myshopify.com')}
-                    {renderInput(SETTINGS_KEYS.SHOPIFY_TOKEN, 'Shopify Admin Access Token', 'Your Shopify token', true)}
-                </div>
-                <div className="mt-6 flex justify-end">
-                    <button
-                        onClick={handleSave}
-                        className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded transition-colors duration-200"
-                    >
-                        {saved ? 'Saved!' : 'Save Credentials'}
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-
 interface MonitoringSidebarProps {
   state: LuminousState;
   onWeightsChange: (newWeights: IntrinsicValueWeights) => void;
 }
 
-type Tab = 'Dashboard' | 'Identity' | 'Goals' | 'System' | 'Store' | 'Integrations' | 'Memory' | 'FileSystem' | 'Settings';
+type Tab = 'Dashboard' | 'Identity' | 'Goals' | 'System' | 'Store' | 'Integrations' | 'Memory' | 'FileSystem';
 
 const MonitoringSidebar: React.FC<MonitoringSidebarProps> = ({ state, onWeightsChange }) => {
   const [activeTab, setActiveTab] = useState<Tab>('Dashboard');
 
-  const tabs: Tab[] = ['Dashboard', 'Identity', 'Goals', 'System', 'Store', 'Integrations', 'Memory', 'FileSystem', 'Settings'];
+  const tabs: Tab[] = ['Dashboard', 'Identity', 'Goals', 'System', 'Store', 'Integrations', 'Memory', 'FileSystem'];
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -120,8 +39,6 @@ const MonitoringSidebar: React.FC<MonitoringSidebarProps> = ({ state, onWeightsC
         return <MemoryTab />;
       case 'FileSystem':
         return <FileSystemTab state={state} />;
-      case 'Settings':
-        return <SettingsTab />;
       default:
         return null;
     }

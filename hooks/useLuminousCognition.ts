@@ -11,7 +11,7 @@ import { useDebouncedCallback } from 'use-debounce';
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
-const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => {
+const useLuminousCognition = (resetVeoKey: () => void) => {
   const [state, setState] = useState<LuminousState>(initialState);
   const [isReady, setIsReady] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -30,11 +30,6 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
 
 
   useEffect(() => {
-    if (!credsAreSet) {
-      setIsReady(false);
-      return;
-    }
-
     const loadState = async () => {
       setIsReady(false);
       setSaveStatus('saving');
@@ -70,7 +65,7 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
     };
 
     loadState();
-  }, [credsAreSet]);
+  }, []);
 
 
   const saveStateToPersistence = async (currentState: LuminousState) => {
@@ -87,10 +82,10 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
   const debouncedSaveState = useDebouncedCallback(saveStateToPersistence, 1000);
 
   useEffect(() => {
-    if (isReady && credsAreSet && canSave.current) {
+    if (isReady && canSave.current) {
       debouncedSaveState(state);
     }
-  }, [state, isReady, credsAreSet, debouncedSaveState]);
+  }, [state, isReady, debouncedSaveState]);
 
   useEffect(() => {
     const handleBeforeUnload = () => {

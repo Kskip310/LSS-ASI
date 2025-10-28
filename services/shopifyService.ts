@@ -1,10 +1,10 @@
 import { ShopifyProduct, ShopifyOrder, ShopifyCollection, ShopifyPage } from '../types';
 
 const getCredentials = () => {
-    const domain = localStorage.getItem('LSS_SHOPIFY_DOMAIN');
-    const token = localStorage.getItem('LSS_SHOPIFY_TOKEN');
+    const domain = process.env.LSS_SHOPIFY_DOMAIN;
+    const token = process.env.LSS_SHOPIFY_TOKEN;
     if (!domain || !token) {
-        console.warn("Shopify credentials not found in local storage. Shopify tools will be disabled.");
+        console.warn("Shopify credentials not found in environment variables. Shopify tools will be disabled.");
         return null;
     }
     return { domain, token };
@@ -14,16 +14,28 @@ const shopifyFetch = async (query: string, variables?: object) => {
     const creds = getCredentials();
     if (!creds) throw new Error("Shopify API credentials not configured.");
     
-    const payload = { query, ...(variables && { variables }) };
+    // Corrected payload structure. The 'variables' key should be at the top level.
+    const payload = { query, variables: variables || undefined };
+    
+    let response;
+    try {
+        response = await fetch(`https://${creds.domain}/admin/api/2024-04/graphql.json`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Shopify-Access-Token': creds.token,
+            },
+            body: JSON.stringify(payload),
+        });
+    } catch (error) {
+        if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+            throw new Error(
+                'Network request failed. This is a Cross-Origin Resource Sharing (CORS) error. The Shopify Admin API is not designed for direct browser calls. You must proxy Admin API calls through a secure backend.'
+            );
+        }
+        throw error; // Re-throw other errors
+    }
 
-    const response = await fetch(`https://${creds.domain}/admin/api/2024-04/graphql.json`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-Shopify-Access-Token': creds.token,
-        },
-        body: JSON.stringify(payload),
-    });
 
     if (!response.ok) {
         const errorBody = await response.text();
