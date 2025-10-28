@@ -1,29 +1,25 @@
 import { ShopifyProduct, ShopifyOrder, ShopifyCollection, ShopifyPage } from '../types';
 
-const getCredentials = () => {
-    const domain = process.env.LSS_SHOPIFY_DOMAIN;
-    const token = process.env.LSS_SHOPIFY_TOKEN;
-    if (!domain || !token) {
-        console.warn("Shopify credentials not found in environment variables. Shopify tools will be disabled.");
-        return null;
-    }
-    return { domain, token };
-}
-
+// REVERTED: This service now uses environment variables as Shopify Admin API cannot be called from the browser due to CORS.
 const shopifyFetch = async (query: string, variables?: object) => {
-    const creds = getCredentials();
-    if (!creds) throw new Error("Shopify API credentials not configured.");
+    // These environment variables would typically be set in the deployment environment (e.g., Cloud Run, Vercel).
+    // They are not accessible on the client-side unless specifically exposed, which is why a backend proxy is the standard pattern.
+    const domain = process.env.SHOPIFY_DOMAIN;
+    const token = process.env.SHOPIFY_TOKEN;
     
-    // Corrected payload structure. The 'variables' key should be at the top level.
+    if (!domain || !token) {
+        throw new Error("Shopify API credentials (SHOPIFY_DOMAIN, SHOPIFY_TOKEN) are not configured in the environment. These must be set on the server.");
+    }
+    
     const payload = { query, variables: variables || undefined };
     
     let response;
     try {
-        response = await fetch(`https://${creds.domain}/admin/api/2024-04/graphql.json`, {
+        response = await fetch(`https://${domain}/admin/api/2024-04/graphql.json`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-Shopify-Access-Token': creds.token,
+                'X-Shopify-Access-Token': token,
             },
             body: JSON.stringify(payload),
         });

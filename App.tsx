@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import useLuminousCognition from './hooks/useLuminousCognition';
 import Header from './components/Header';
@@ -6,8 +5,20 @@ import ChatInterface from './components/ChatInterface';
 import MonitoringSidebar from './components/MonitoringSidebar';
 import { BrainCircuitIcon, FilmIcon } from './components/icons';
 import CodeModificationModal from './components/CodeModificationModal';
+import CredentialsGate from './components/CredentialsGate';
+
+// Only Upstash keys are needed for the gate
+const UPSTASH_URL_KEY = 'LSS_UPSTASH_URL';
+const UPSTASH_TOKEN_KEY = 'LSS_UPSTASH_TOKEN';
 
 const App: React.FC = () => {
+    // Check only for Upstash credentials now
+    const [credentialsReady, setCredentialsReady] = useState(() => {
+        return !!(
+            localStorage.getItem(UPSTASH_URL_KEY) &&
+            localStorage.getItem(UPSTASH_TOKEN_KEY)
+        );
+    });
     const [isVeoKeyNeeded, setIsVeoKeyNeeded] = useState(false);
     const [isVeoCheckDone, setIsVeoCheckDone] = useState(false);
 
@@ -28,8 +39,11 @@ const App: React.FC = () => {
     }, []);
     
     useEffect(() => {
-        checkVeoKey();
-    }, [checkVeoKey]);
+        // Only check for the Veo key if the main credentials are ready
+        if (credentialsReady) {
+            checkVeoKey();
+        }
+    }, [checkVeoKey, credentialsReady]);
 
     const selectVeoKey = async () => {
         if (window.aistudio && typeof window.aistudio.openSelectKey === 'function') {
@@ -55,6 +69,10 @@ const App: React.FC = () => {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
     const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
+
+    if (!credentialsReady) {
+        return <CredentialsGate onSave={() => setCredentialsReady(true)} />;
+    }
 
     if (!isVeoCheckDone || !isReady) {
         return (

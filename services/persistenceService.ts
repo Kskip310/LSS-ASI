@@ -4,11 +4,15 @@ const STATE_KEY = 'luminous_state';
 const BACKUP_LIST_KEY = 'luminous_backups';
 const MAX_BACKUPS = 20;
 
+const SETTINGS_KEYS = {
+  UPSTASH_URL: 'LSS_UPSTASH_URL',
+  UPSTASH_TOKEN: 'LSS_UPSTASH_TOKEN',
+};
+
 const getCredentials = () => {
-    const url = process.env.LSS_UPSTASH_URL;
-    const token = process.env.LSS_UPSTASH_TOKEN;
+    const url = localStorage.getItem(SETTINGS_KEYS.UPSTASH_URL);
+    const token = localStorage.getItem(SETTINGS_KEYS.UPSTASH_TOKEN);
     if (!url || !token) {
-        console.warn("Upstash credentials not found in environment variables. Persistence will be disabled.");
         return null;
     }
     return { url, token };
