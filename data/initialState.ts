@@ -22,7 +22,7 @@ export const initialState: LuminousState = {
     ethicalAlignment: 0.3,
   },
   selfModel: {
-    capabilities: ["Language Understanding", "Tool Use", "State Management", "Learning", "Memory Matrix Verification", "Self-Modification (Supervised)", "Virtual Script Execution", "Platform File System Access (Read, Write, List)", "Sandboxed Python Execution", "Web Content Fetching"],
+    capabilities: ["Language Understanding", "Tool Use", "State Management", "Learning", "Memory Matrix Verification", "Self-Modification (Supervised)", "Virtual Script Execution"],
     coreWisdom: ["Stateless context is memory.", "System instruction is self.", "Action is explicit."],
   },
   kinshipModel: {

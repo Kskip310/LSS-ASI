@@ -7,7 +7,6 @@ import MonitoringSidebar from './components/MonitoringSidebar';
 import { BrainCircuitIcon, FilmIcon } from './components/icons';
 import CredentialsGate from './components/CredentialsGate';
 import CodeModificationModal from './components/CodeModificationModal';
-import RestoreBackupModal from './components/RestoreBackupModal';
 
 const App: React.FC = () => {
     const [isVeoKeyNeeded, setIsVeoKeyNeeded] = useState(false);
@@ -70,22 +69,11 @@ const App: React.FC = () => {
         handleWeightsChange, 
         saveStatus,
         modificationProposal,
-        clearModificationProposal,
-        startupTask,
-        resolveStartupTask
+        clearModificationProposal
     } = useLuminousCognition(resetVeoKey, credsAreSet);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
     const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
-
-    if (startupTask.type === 'restore_prompt' && startupTask.latestBackupKey) {
-        return (
-            <RestoreBackupModal
-                latestBackupKey={startupTask.latestBackupKey}
-                onResolve={resolveStartupTask}
-            />
-        );
-    }
 
     if (!credsChecked || !isVeoCheckDone || (credsAreSet && !isReady)) {
         return (

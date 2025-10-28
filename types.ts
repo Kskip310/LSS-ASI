@@ -76,6 +76,7 @@ export interface ChatMessage {
 // --- New Types for Shopify Integration ---
 export interface ShopifyProduct {
     id: string;
+    inventoryItemId: string;
     name: string;
     inventory: number;
 }
@@ -90,7 +91,7 @@ export interface ShopifyOrder {
 export interface ShopifyCollection {
     id: string;
     title: string;
-    descriptionHtml: string;
+    productsCount: number;
 }
 
 export interface ShopifyPage {

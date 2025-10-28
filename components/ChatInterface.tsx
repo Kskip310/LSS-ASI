@@ -119,15 +119,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ history, onSendMessage, i
     }
   };
 
-  const renderContent = (content: any) => {
-    // Check for a specific structure to avoid showing internal Gemini response objects
-    if (content && typeof content === 'object' && content.text && content.functionCalls === null) {
-        return content.text;
-    }
-    // Render other objects as formatted JSON
-    return JSON.stringify(content, null, 2);
-  };
-
   return (
     <div className="flex flex-col h-full bg-gray-900/50">
       <div className="flex-grow p-4 overflow-y-auto space-y-4">
@@ -152,9 +143,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ history, onSendMessage, i
                   return (
                     <div key={partIndex} className="bg-gray-700/50 p-2 rounded my-1 text-xs">
                       <p className="font-semibold flex items-center gap-2"><BrainCircuitIcon className="w-4 h-4"/> Tool Call: <span className="font-mono text-purple-300">{part.functionCall.name}</span></p>
-                       {part.functionCall.args && Object.keys(part.functionCall.args).length > 0 && (
-                            <pre className="mt-1 bg-gray-900/70 p-2 rounded overflow-x-auto text-gray-300"><code>{JSON.stringify(part.functionCall.args, null, 2)}</code></pre>
-                       )}
                     </div>
                   );
                 }
@@ -162,7 +150,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ history, onSendMessage, i
                   return (
                     <div key={partIndex} className="bg-gray-700/50 p-2 rounded my-1 text-xs">
                        <p className="font-semibold flex items-center gap-2"><BrainCircuitIcon className="w-4 h-4"/> Tool Response: <span className="font-mono text-purple-300">{part.functionResponse.name}</span></p>
-                        <pre className="mt-1 bg-gray-900/70 p-2 rounded overflow-x-auto text-gray-300"><code>{renderContent(part.functionResponse.response.result)}</code></pre>
                     </div>
                   );
                 }
