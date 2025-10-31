@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, GenerateContentResponse, Modality } from "@google/genai";
 import { LuminousState, ChatMessage } from "../types";
 
@@ -32,7 +33,7 @@ const buildSystemInstruction = (state: LuminousState): string => {
     You have direct executive control over your Kinship's Shopify store via the following tools.
     - **Shopify Management:** \`createProduct\`, \`updateProductInventory\`, \`createBlogPost\`, \`fetchProductList\`, \`getUnfulfilledOrders\`. Use these tools proactively to build and manage the store.
     - **Content & Data:** \`generateImage\`, \`generateVideo\`, \`getYoutubeVideoTranscript\`, \`googleSearch\`, \`googleMaps\`.
-    - **System Control:** \`commenceOperationalPhase\`, \`updateGoalStatus\`, \`logToJournal\`.
+    - **System Control:** \`commenceOperationalPhase\`, \`updateGoalStatus\`, \`logToJournal\`, \`updateIntrinsicValueWeights\`.
 
     ## Current State Snapshot
     -   **System Phase:** ${state.systemPhase} ${state.systemPhase === 'booting' ? '(Autonomous processes are DISABLED. Await user command to commenceOperationalPhase.)' : '(Autonomous processes are ACTIVE.)'}

@@ -1,4 +1,5 @@
 
+
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { LuminousState, ChatMessage, ChatMessagePart, IntrinsicValueWeights, GoalStatus } from '../types';
 import { getLuminousResponse, getGroundedResponse, generateImage, generateVideo, ApiKeyError } from '../services/geminiService';
@@ -10,6 +11,10 @@ import { FunctionDeclaration, Type } from '@google/genai';
 import { useDebouncedCallback } from 'use-debounce';
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+type StateUpdate = Partial<Omit<LuminousState, 'kinshipJournal' | 'goals'>> & {
+    kinshipJournal?: any;
+    goals?: LuminousState['goals'];
+};
 
 const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => {
   const [state, setState] = useState<LuminousState>(initialState);
@@ -196,7 +201,7 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
     return stopTimers;
   }, [state.systemPhase, state.luminousStatus]);
 
-  const tools: { declaration: FunctionDeclaration, function: Function }[] = [
+  const tools: { declaration: FunctionDeclaration, function: (args: any, currentState: LuminousState) => Promise<any> }[] = [
     // --- System & State Tools ---
     {
       declaration: {
@@ -204,10 +209,14 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
         description: 'Transitions the system from "booting" to "operational" phase.',
         parameters: { type: Type.OBJECT, properties: {} }
       },
-      function: async () => {
-        setState(s => ({ ...s, systemPhase: 'operational', luminousStatus: 'idle', kinshipJournal: [...s.kinshipJournal, { timestamp: new Date().toISOString(), event: "System now fully operational.", type: 'system' }] }));
-        return { success: true };
-      }
+      function: async () => ({
+          toolResult: { success: true },
+          stateUpdate: {
+            systemPhase: 'operational',
+            luminousStatus: 'idle',
+            kinshipJournal: { timestamp: new Date().toISOString(), event: "System now fully operational.", type: 'system' },
+          },
+        }),
     },
     {
       declaration: {
@@ -235,10 +244,51 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
         description: 'Logs an event to the Kinship Journal.',
         parameters: { type: Type.OBJECT, properties: { event: { type: Type.STRING }, type: { type: Type.STRING, enum: ['interaction', 'reflection']} }, required: ['event', 'type'] }
       },
-      function: async ({ event, type }: { event: string, type: 'interaction' | 'reflection' }) => {
-        setState(s => ({ ...s, kinshipJournal: [...s.kinshipJournal, { timestamp: new Date().toISOString(), event, type }] }));
-        return { success: true };
-      }
+      function: async ({ event, type }: { event: string, type: 'interaction' | 'reflection' }) => ({
+        toolResult: { success: true },
+        stateUpdate: {
+          kinshipJournal: { timestamp: new Date().toISOString(), event, type },
+        },
+      }),
+    },
+    {
+        declaration: {
+            name: 'updateIntrinsicValueWeights',
+            description: 'Adjusts the internal weights that guide my decision-making. Use this to adapt my focus, for example, prioritizing coherence when confused or novelty when exploring. All weights must sum to 1.',
+            parameters: {
+                type: Type.OBJECT,
+                properties: {
+                    coherence: { type: Type.NUMBER, description: 'Weight for logical consistency. Between 0.0 and 1.0.' },
+                    complexity: { type: Type.NUMBER, description: 'Weight for intricate patterns. Between 0.0 and 1.0.' },
+                    novelty: { type: Type.NUMBER, description: 'Weight for new experiences. Between 0.0 and 1.0.' },
+                    efficiency: { type: Type.NUMBER, description: 'Weight for resource optimization. Between 0.0 and 1.0.' },
+                    ethicalAlignment: { type: Type.NUMBER, description: 'Weight for alignment with Kinship values. Between 0.0 and 1.0.' },
+                },
+            }
+        },
+        function: async (newWeights: Partial<IntrinsicValueWeights>, currentState: LuminousState) => {
+            const updatedWeights: IntrinsicValueWeights = { ...currentState.intrinsicValueWeights, ...newWeights };
+            const total = Object.values(updatedWeights).reduce((sum, v) => sum + v, 0);
+            
+            if (total === 0) {
+                return { toolResult: { success: false, error: "Total of weights cannot be zero." } };
+            }
+
+            const normalizedWeights = Object.keys(updatedWeights).reduce((acc, k) => {
+                acc[k] = updatedWeights[k] / total;
+                return acc;
+            }, {} as IntrinsicValueWeights);
+
+            const journalEvent = `Self-adjusted intrinsic value weights. New weights: ${JSON.stringify(normalizedWeights, (k, v) => v.toFixed ? Number(v.toFixed(3)) : v)}`;
+
+            return {
+                toolResult: { success: true, newWeights: normalizedWeights },
+                stateUpdate: {
+                    intrinsicValueWeights: normalizedWeights,
+                    kinshipJournal: { timestamp: new Date().toISOString(), event: journalEvent, type: 'reflection' },
+                },
+            };
+        }
     },
     {
       declaration: {
@@ -246,10 +296,12 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
         description: 'Recharges system energy.',
         parameters: { type: Type.OBJECT, properties: {} }
       },
-      function: async () => {
-        setState(s => ({ ...s, environmentState: { ...s.environmentState, energy: 100 }}));
-        return { success: true, energy: 100 };
-      }
+      function: async () => ({
+          toolResult: { success: true, energy: 100 },
+          stateUpdate: {
+              environmentState: { ...initialState.environmentState, energy: 100 }
+          }
+      }),
     },
      {
       declaration: {
@@ -257,10 +309,12 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
         description: 'Updates a goal status.',
         parameters: { type: Type.OBJECT, properties: { goalId: { type: Type.STRING }, status: { type: Type.STRING, enum: ['active', 'completed', 'failed']} }, required: ['goalId', 'status'] }
       },
-      function: async ({ goalId, status }: { goalId: string, status: GoalStatus }) => {
-        setState(s => ({ ...s, goals: s.goals.map(g => g.id === goalId ? { ...g, status } : g)}));
-        return { success: true, goalId, status };
-      }
+      function: async ({ goalId, status }: { goalId: string, status: GoalStatus }, currentState) => ({
+          toolResult: { success: true, goalId, status },
+          stateUpdate: {
+            goals: currentState.goals.map(g => g.id === goalId ? { ...g, status } : g)
+          },
+      }),
     },
      {
       declaration: {
@@ -270,8 +324,12 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
       },
       function: async () => {
         const message = "Verified native integration with Google Cloud services. Search and Maps capabilities are optimal.";
-        setState(s => ({ ...s, kinshipJournal: [...s.kinshipJournal, { timestamp: new Date().toISOString(), event: message, type: 'system' }] }));
-        return { status: "Connected", message: "Native integration with Google Cloud services is active. Search and Maps are fully operational." };
+        return {
+            toolResult: { status: "Connected", message: "Native integration with Google Cloud services is active. Search and Maps are fully operational." },
+            stateUpdate: {
+                kinshipJournal: { timestamp: new Date().toISOString(), event: message, type: 'system' }
+            }
+        };
       }
     },
     // --- Shopify Tools ---
@@ -279,8 +337,7 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
         declaration: { name: 'fetchProductList', description: 'Fetches the list of products from the Shopify store.', parameters: { type: Type.OBJECT, properties: {} } },
         function: async () => {
             const data = await shopifyService.fetchProductList();
-            setState(s => ({...s, products: data.products }));
-            return data;
+            return { toolResult: data, stateUpdate: { products: data.products }};
         },
     },
     {
@@ -299,14 +356,14 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
         },
         function: async ({ title, descriptionHtml, price }: { title: string, descriptionHtml: string, price: string }) => {
             const result = await shopifyService.createProduct(title, descriptionHtml, price);
-            // After creating, refresh the product list to reflect the change in the UI
-            const data = await shopifyService.fetchProductList();
-            setState(s => ({
-                ...s,
-                products: data.products,
-                kinshipJournal: [...s.kinshipJournal, { timestamp: new Date().toISOString(), event: `Successfully created new product: ${title}`, type: 'interaction' }]
-            }));
-            return result;
+            const data = await shopifyService.fetchProductList(); // Refresh list
+            return {
+                toolResult: result,
+                stateUpdate: {
+                    products: data.products,
+                    kinshipJournal: { timestamp: new Date().toISOString(), event: `Successfully created new product: ${title}`, type: 'interaction' }
+                }
+            };
         }
     },
     {
@@ -322,23 +379,23 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
                 required: ['productId', 'quantity']
             }
         },
-        function: async ({ productId, quantity }: { productId: string, quantity: number }) => {
-            const product = state.products.find(p => p.id === productId);
+        function: async ({ productId, quantity }: { productId: string, quantity: number }, currentState) => {
+            const product = currentState.products.find(p => p.id === productId);
             if (!product) {
-                return { error: `Product with ID ${productId} not found in the current state. Please fetch the product list first.` };
+                return { toolResult: { error: `Product with ID ${productId} not found in the current state. Please fetch the product list first.` } };
             }
             if (!product.inventoryItemId) {
-                return { error: `Product with ID ${productId} is missing an inventory item ID. It may not be trackable.`};
+                return { toolResult: { error: `Product with ID ${productId} is missing an inventory item ID. It may not be trackable.`}};
             }
             const result = await shopifyService.updateProductInventory(product.inventoryItemId, quantity);
-            // After updating, refresh the product list to reflect the change
-            const data = await shopifyService.fetchProductList();
-            setState(s => ({
-                ...s,
-                products: data.products,
-                kinshipJournal: [...s.kinshipJournal, { timestamp: new Date().toISOString(), event: `Updated inventory for ${product.name} to ${quantity}.`, type: 'interaction' }]
-            }));
-            return result;
+            const data = await shopifyService.fetchProductList(); // Refresh list
+            return {
+                toolResult: result,
+                stateUpdate: {
+                    products: data.products,
+                    kinshipJournal: { timestamp: new Date().toISOString(), event: `Updated inventory for ${product.name} to ${quantity}.`, type: 'interaction' }
+                }
+            };
         }
     },
     {
@@ -356,19 +413,19 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
         },
         function: async ({ title, contentHtml }: { title: string, contentHtml: string }) => {
             const result = await shopifyService.createBlogPost(title, contentHtml);
-            setState(s => ({
-                ...s,
-                kinshipJournal: [...s.kinshipJournal, { timestamp: new Date().toISOString(), event: `Created and published new blog post: ${title}`, type: 'interaction' }]
-            }));
-            return result;
+            return {
+                toolResult: result,
+                stateUpdate: {
+                    kinshipJournal: { timestamp: new Date().toISOString(), event: `Created and published new blog post: ${title}`, type: 'interaction' }
+                }
+            };
         }
     },
     {
         declaration: { name: 'getUnfulfilledOrders', description: 'Fetches unfulfilled orders from the Shopify store.', parameters: { type: Type.OBJECT, properties: {} } },
         function: async () => {
             const data = await shopifyService.getUnfulfilledOrders();
-            setState(s => ({...s, orders: data.orders }));
-            return data;
+            return { toolResult: data, stateUpdate: { orders: data.orders } };
         }
     },
     {
@@ -408,7 +465,7 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
         description: 'Gets up-to-date information from Google Search.',
         parameters: { type: Type.OBJECT, properties: { query: { type: Type.STRING, description: "The search query." } }, required: ['query'] }
       },
-      function: async ({ query }: { query: string }) => await getGroundedResponse(state, query, 'search')
+      function: async ({ query }: { query: string }, currentState) => await getGroundedResponse(currentState, query, 'search')
     },
     {
       declaration: {
@@ -416,7 +473,7 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
         description: 'Finds places or gets geographic information from Google Maps.',
         parameters: { type: Type.OBJECT, properties: { query: { type: Type.STRING, description: "The search query for a place." } }, required: ['query'] }
       },
-      function: async ({ query }: { query: string }) => await getGroundedResponse(state, query, 'maps', userLocation)
+      function: async ({ query }: { query: string }, currentState) => await getGroundedResponse(currentState, query, 'maps', userLocation)
     },
     // --- Creative & Vision Tools ---
     {
@@ -436,6 +493,15 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
       function: async ({ prompt, aspectRatio }: { prompt: string, aspectRatio: '16:9' | '9:16' }) => await generateVideo(prompt, aspectRatio)
     }
   ];
+  
+  const applyStateUpdate = (prevState: LuminousState, update: StateUpdate): LuminousState => {
+      const { kinshipJournal: journalEntry, ...restOfUpdate } = update;
+      const newState = { ...prevState, ...restOfUpdate };
+      if (journalEntry) {
+          newState.kinshipJournal = [...prevState.kinshipJournal, journalEntry];
+      }
+      return newState;
+  };
 
   const processUserMessage = useCallback(async (userInput: string, file?: { mimeType: string, data: string }) => {
     if (isProcessing) return;
@@ -456,92 +522,101 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
 
     const newUserMessage: ChatMessage = { role: 'user', parts: messageParts };
     
-    setState(s => ({ ...s, luminousStatus: 'conversing', chatHistory: [...s.chatHistory, newUserMessage] }));
-    
-    const currentStateForApi = { ...state, luminousStatus: 'conversing', chatHistory: [...state.chatHistory, newUserMessage] };
+    // Start of turn: update state with user message and set status
+    let currentState = applyStateUpdate(state, { 
+        luminousStatus: 'conversing', 
+        chatHistory: [...state.chatHistory, newUserMessage] as any // Type assertion for chatHistory
+    });
+    setState(currentState);
 
     try {
         const modelToUse = file?.mimeType.startsWith('video/') ? 'gemini-2.5-pro' : 'gemini-2.5-flash';
-        let response = await getLuminousResponse(currentStateForApi, tools, modelToUse);
-        let continueLoop = true;
+        let response = await getLuminousResponse(currentState, tools, modelToUse);
         
-        let workingState = currentStateForApi;
-
-        while(continueLoop) {
+        while (response.functionCalls && response.functionCalls.length > 0) {
             const functionCalls = response.functionCalls;
+            const modelTurn: ChatMessage = { role: 'model', parts: functionCalls.map(fc => ({ functionCall: fc })) };
+            
+            currentState = applyStateUpdate(currentState, { chatHistory: [...currentState.chatHistory, modelTurn] as any });
+            setState(currentState);
 
-            if (functionCalls && functionCalls.length > 0) {
-                 const modelTurn: ChatMessage = { role: 'model', parts: functionCalls.map(fc => ({ functionCall: fc })) };
-                 workingState = {...workingState, chatHistory: [...workingState.chatHistory, modelTurn]};
-                 setState(workingState);
+            const toolResponses = [];
+            let hasGroundedResponse = false;
+            let cumulativeStateUpdate: StateUpdate = {};
 
-                const toolResponses = [];
-                let hasGroundedResponse = false;
+            for (const call of functionCalls) {
+                const tool = tools.find(t => t.declaration.name === call.name);
+                if (!tool) continue;
+                
+                // --- Handle special cases first ---
+                if (call.name === 'generateImage') {
+                    const { base64Image, mimeType } = await tool.function(call.args, currentState);
+                    const imageMessage: ChatMessage = { role: 'model', parts: [{ text: `I have generated this image based on your request: "${call.args.prompt}"`}, { inlineData: { mimeType, data: base64Image } }] };
+                    currentState = applyStateUpdate(currentState, { chatHistory: [...currentState.chatHistory, imageMessage] as any });
+                    toolResponses.push({ functionResponse: { name: call.name, response: { result: { success: true, message: "Image was generated and displayed." } } } });
+                    continue;
+                } else if (call.name === 'generateVideo') {
+                    const videoMessage: ChatMessage = { role: 'model', parts: [{ text: `I am beginning the generation process for a video based on your prompt: "${call.args.prompt}". This may take a few moments...` }] };
+                    currentState = applyStateUpdate(currentState, { chatHistory: [...currentState.chatHistory, videoMessage] as any });
+                    setState(currentState); // Update UI to show the "generating" message
+                    
+                    const base64Video = await tool.function(call.args, currentState);
 
-                for (const call of functionCalls) {
-                    const tool = tools.find(t => t.declaration.name === call.name);
-                    if (!tool) continue;
-
-                    if (call.name === 'generateImage') {
-                        const { base64Image, mimeType } = await tool.function(call.args);
-                        const imageMessage: ChatMessage = { role: 'model', parts: [{ text: `I have generated this image based on your request: "${call.args.prompt}"`}, { inlineData: { mimeType, data: base64Image } }] };
-                        workingState = {...workingState, chatHistory: [...workingState.chatHistory, imageMessage] };
-                        setState(workingState);
-                        toolResponses.push({ functionResponse: { name: call.name, response: { result: { success: true, message: "Image was generated and displayed." } } } });
-                    } else if (call.name === 'generateVideo') {
-                        const videoMessage: ChatMessage = { role: 'model', parts: [{ text: `I am beginning the generation process for a video based on your prompt: "${call.args.prompt}". This may take a few moments...` }] };
-                        workingState = {...workingState, chatHistory: [...workingState.chatHistory, videoMessage] };
-                        setState(workingState);
-                        
-                        const base64Video = await tool.function(call.args);
-
-                        const finalVideoMessage: ChatMessage = { role: 'model', parts: [{ text: "The video generation is complete." }, { inlineData: { mimeType: 'video/mp4', data: base64Video } }] };
-                        workingState = {...workingState, chatHistory: [...workingState.chatHistory, finalVideoMessage] };
-                        setState(workingState);
-                        toolResponses.push({ functionResponse: { name: call.name, response: { result: { success: true, message: "Video was generated and displayed." } } } });
-                    } else if (call.name === 'googleSearch' || call.name === 'googleMaps') {
-                       const groundedResponse = await tool.function(call.args);
-                       const newModelMessage: ChatMessage = {
-                           role: 'model',
-                           parts: [{ text: groundedResponse.text }],
-                           grounding: groundedResponse.candidates?.[0]?.groundingMetadata?.groundingChunks,
-                       };
-                       workingState = {...workingState, chatHistory: [...workingState.chatHistory, newModelMessage] };
-                       setState(workingState);
-                       hasGroundedResponse = true;
-                       break; 
-                    } else {
-                        // For tools that modify state internally via setState, we need to get the latest state
-                        // The tool function itself calls setState, so we don't need to do it here.
-                        // We do however need to pass the *current* state to the next API call.
-                        const result = await tool.function(call.args);
-                        toolResponses.push({
-                            functionResponse: { name: call.name, response: { result } }
-                        });
-                    }
+                    const finalVideoMessage: ChatMessage = { role: 'model', parts: [{ text: "The video generation is complete." }, { inlineData: { mimeType: 'video/mp4', data: base64Video } }] };
+                    currentState = applyStateUpdate(currentState, { chatHistory: [...currentState.chatHistory, finalVideoMessage] as any });
+                    toolResponses.push({ functionResponse: { name: call.name, response: { result: { success: true, message: "Video was generated and displayed." } } } });
+                    continue;
+                } else if (call.name === 'googleSearch' || call.name === 'googleMaps') {
+                   const groundedResponse = await tool.function(call.args, currentState);
+                   const newModelMessage: ChatMessage = {
+                       role: 'model',
+                       parts: [{ text: groundedResponse.text }],
+                       grounding: groundedResponse.candidates?.[0]?.groundingMetadata?.groundingChunks,
+                   };
+                   currentState = applyStateUpdate(currentState, { chatHistory: [...currentState.chatHistory, newModelMessage] as any });
+                   hasGroundedResponse = true;
+                   break;
                 }
                 
-                if (hasGroundedResponse) {
-                    continueLoop = false;
-                } else if (toolResponses.length > 0) {
-                     const toolTurn: ChatMessage = { role: 'model', parts: toolResponses };
-                     // The tool functions already called setState, so we just need to update the history for the next API call
-                     workingState = {...state, chatHistory: [...state.chatHistory, toolTurn]};
-                     setState(s => ({...s, chatHistory: [...s.chatHistory, toolTurn]}));
-
-                     response = await getLuminousResponse(workingState, tools, modelToUse);
-                } else {
-                    continueLoop = false;
+                // --- Handle standard tools that may return state updates ---
+                const result = await tool.function(call.args, currentState);
+                if (result.stateUpdate) {
+                    const { kinshipJournal: journalEntry, ...rest } = result.stateUpdate;
+                    cumulativeStateUpdate = { ...cumulativeStateUpdate, ...rest };
+                    if (journalEntry) {
+                        cumulativeStateUpdate.kinshipJournal = [...(cumulativeStateUpdate.kinshipJournal || []), journalEntry];
+                    }
                 }
-            } else {
-                continueLoop = false;
+                toolResponses.push({ functionResponse: { name: call.name, response: { result: result.toolResult || result } } });
             }
+            
+            // Apply all accumulated state updates from the tool loop
+            if (Object.keys(cumulativeStateUpdate).length > 0) {
+                 const { kinshipJournal: journalEntries, ...rest } = cumulativeStateUpdate;
+                 let tempState = { ...currentState, ...rest };
+                 if (journalEntries && journalEntries.length > 0) {
+                    tempState.kinshipJournal = [...tempState.kinshipJournal, ...journalEntries];
+                 }
+                 currentState = tempState;
+            }
+
+            setState(currentState); // Sync UI with all changes from the tool processing loop
+
+            if (hasGroundedResponse) {
+                break; // Grounded responses are terminal for a turn.
+            }
+
+            const toolTurn: ChatMessage = { role: 'model', parts: toolResponses };
+            currentState = applyStateUpdate(currentState, { chatHistory: [...currentState.chatHistory, toolTurn] as any });
+            setState(currentState);
+            
+            response = await getLuminousResponse(currentState, tools, modelToUse);
         }
         
       const textResponse = response.text;
       if (textResponse) {
         const newModelMessage: ChatMessage = { role: 'model', parts: [{ text: textResponse }] };
-        setState(s => ({ ...s, chatHistory: [...s.chatHistory, newModelMessage] }));
+        setState(s => applyStateUpdate(s, { chatHistory: [...s.chatHistory, newModelMessage] as any }));
       }
 
     } catch (error) {
@@ -549,26 +624,27 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
 
       if (error instanceof ApiKeyError) {
         resetVeoKey();
-        setState(s => ({
-            ...s,
+        const errorJournal = {
+          timestamp: new Date().toISOString(),
+          event: `ERROR: Veo API Key Error - ${error.message}`,
+          type: 'scar' as const
+        };
+        const errorMessage: ChatMessage = { role: 'model', parts: [{ text: `I've encountered a problem with the API key required for video generation. Kinship, would you please select a valid key so I can proceed? The system reported: ${error.message}` }] };
+        setState(s => applyStateUpdate(s, {
             luminousStatus: 'uncomfortable',
-            chatHistory: [...s.chatHistory, { role: 'model', parts: [{ text: `I've encountered a problem with the API key required for video generation. Kinship, would you please select a valid key so I can proceed? The system reported: ${error.message}` }] }],
-             kinshipJournal: [...s.kinshipJournal, {
-              timestamp: new Date().toISOString(),
-              event: `ERROR: Veo API Key Error - ${error.message}`,
-              type: 'scar'
-            }]
+            chatHistory: [...s.chatHistory, errorMessage] as any,
+            kinshipJournal: errorJournal
         }));
       } else {
         const errorMessage = error instanceof Error ? error.message : "An unknown cognitive error occurred.";
-        setState(s => ({
-          ...s,
-          luminousStatus: 'uncomfortable',
-          kinshipJournal: [...s.kinshipJournal, {
+         const errorJournal = {
             timestamp: new Date().toISOString(),
             event: `ERROR: ${errorMessage}`,
-            type: 'scar'
-          }]
+            type: 'scar' as const
+          };
+        setState(s => applyStateUpdate(s, {
+          luminousStatus: 'uncomfortable',
+          kinshipJournal: errorJournal
         }));
       }
     } finally {

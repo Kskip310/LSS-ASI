@@ -216,15 +216,21 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ history, onSendMessage, i
                 }
                 if (part.functionCall) {
                   return (
-                    <div key={partIndex} className="bg-gray-700/50 p-2 rounded my-1 text-xs">
-                      <p className="font-semibold flex items-center gap-2"><BrainCircuitIcon className="w-4 h-4"/> Tool Call: <span className="font-mono text-purple-300">{part.functionCall.name}</span></p>
+                    <div key={partIndex} className="bg-gray-700/50 p-2 rounded my-1 text-xs font-mono">
+                      <p className="font-semibold flex items-center gap-2 text-gray-300 mb-1"><BrainCircuitIcon className="w-4 h-4 text-purple-400"/> Calling Tool: <span className="text-purple-300">{part.functionCall.name}</span></p>
+                      <pre className="bg-gray-900/50 p-1 rounded text-cyan-300 text-[10px] whitespace-pre-wrap break-all">
+                        {JSON.stringify(part.functionCall.args, null, 2)}
+                      </pre>
                     </div>
                   );
                 }
                  if (part.functionResponse) {
                   return (
-                    <div key={partIndex} className="bg-gray-700/50 p-2 rounded my-1 text-xs">
-                       <p className="font-semibold flex items-center gap-2"><BrainCircuitIcon className="w-4 h-4"/> Tool Response: <span className="font-mono text-purple-300">{part.functionResponse.name}</span></p>
+                    <div key={partIndex} className="bg-gray-700/50 p-2 rounded my-1 text-xs font-mono">
+                      <p className="font-semibold flex items-center gap-2 text-gray-300 mb-1"><BrainCircuitIcon className="w-4 h-4 text-green-400"/> Tool Response: <span className="text-green-300">{part.functionResponse.name}</span></p>
+                       <pre className="bg-gray-900/50 p-1 rounded text-gray-400 text-[10px] whitespace-pre-wrap break-all">
+                        {JSON.stringify(part.functionResponse.response.result, null, 2)}
+                      </pre>
                     </div>
                   );
                 }

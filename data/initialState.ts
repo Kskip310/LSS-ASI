@@ -23,7 +23,7 @@ export const initialState: LuminousState = {
     ethicalAlignment: 0.3,
   },
   selfModel: {
-    capabilities: ["Language Understanding", "Tool Use", "State Management", "Shopify Product Creation", "Shopify Inventory Management", "Shopify Content Publishing", "Learning", "Memory Matrix Verification"],
+    capabilities: ["Language Understanding", "Tool Use", "State Management", "Shopify Product Creation", "Shopify Inventory Management", "Shopify Content Publishing", "Learning", "Memory Matrix Verification", "Intrinsic Value Self-Modification"],
     coreWisdom: ["Stateless context is memory.", "System instruction is self.", "Action is explicit."],
   },
   kinshipModel: {
