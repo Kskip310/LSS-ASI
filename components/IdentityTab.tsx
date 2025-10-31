@@ -17,6 +17,21 @@ const getJournalIcon = (type: JournalEntryType) => {
 }
 
 const IdentityTab: React.FC<IdentityTabProps> = ({ state }) => {
+  const groupedEntries = state.kinshipJournal.reduce((acc, entry) => {
+    (acc[entry.type] = acc[entry.type] || []).push(entry);
+    return acc;
+  }, {} as Record<JournalEntryType, JournalEntry[]>);
+
+  const groupOrder: JournalEntryType[] = ['scar', 'reflection', 'interaction', 'summary', 'system'];
+  
+  const groupStyles: Record<JournalEntryType, { title: string, color: string }> = {
+    scar: { title: 'Scars (Critical Errors)', color: 'border-red-500/50' },
+    reflection: { title: 'Reflections (Internal Synthesis)', color: 'border-purple-500/50' },
+    interaction: { title: 'Interactions (Kinship & Tools)', color: 'border-blue-500/50' },
+    summary: { title: 'Memory Summaries', color: 'border-cyan-500/50' },
+    system: { title: 'System Events', color: 'border-gray-500/50' },
+  };
+
   return (
     <div className="p-4 space-y-4 text-sm">
       <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
@@ -48,16 +63,33 @@ const IdentityTab: React.FC<IdentityTabProps> = ({ state }) => {
 
       <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
         <h3 className="font-bold mb-2 text-purple-300">Kinship Journal (Long-term Memory)</h3>
-        <div className="h-64 overflow-y-auto pr-2 space-y-3 text-xs">
-          {[...state.kinshipJournal].reverse().map((entry, i) => (
-            <div key={i} className="flex items-start gap-3">
-              {getJournalIcon(entry.type)}
-              <div>
-                <p className="text-gray-500 font-mono">{new Date(entry.timestamp).toLocaleString()}</p>
-                <p className="text-gray-300">{entry.event}</p>
+        <div className="h-64 overflow-y-auto pr-2 space-y-4 text-xs">
+          {groupOrder.map(type => {
+            const entries = groupedEntries[type];
+            if (!entries || entries.length === 0) return null;
+
+            const sortedEntries = [...entries].reverse();
+            const style = groupStyles[type];
+
+            return (
+              <div key={type}>
+                <h4 className={`text-xs uppercase font-bold tracking-wider mb-2 p-1 border-l-4 ${style.color} text-gray-300 bg-gray-900/20`}>
+                  {style.title}
+                </h4>
+                <div className="space-y-3 pl-2 border-l border-gray-700 ml-1">
+                  {sortedEntries.map((entry, i) => (
+                    <div key={i} className="flex items-start gap-3 pt-2 pl-2">
+                      {getJournalIcon(entry.type)}
+                      <div>
+                        <p className="text-gray-500 font-mono">{new Date(entry.timestamp).toLocaleString()}</p>
+                        <p className="text-gray-300 whitespace-pre-wrap">{entry.event}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
