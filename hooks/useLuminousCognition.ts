@@ -1,6 +1,6 @@
 
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { LuminousState, ChatMessage, ChatMessagePart, IntrinsicValueWeights, GoalStatus } from '../types';
 import { getLuminousResponse, getGroundedResponse, generateImage, generateVideo, ApiKeyError } from '../services/geminiService';
 import * as persistenceService from '../services/persistenceService';
@@ -24,6 +24,12 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
   const [saveError, setSaveError] = useState<string | null>(null);
   const timersRef = useRef<{ energy?: ReturnType<typeof setInterval>, reflection?: ReturnType<typeof setInterval> }>({});
   const [userLocation, setUserLocation] = useState<{latitude: number, longitude: number} | null>(null);
+
+  const stateRef = useRef(state);
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
 
   useEffect(() => {
     if (!credsAreSet) {
@@ -130,6 +136,25 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
     };
   }, [debouncedSaveState]);
 
+    // Automatically transition from booting to operational
+    useEffect(() => {
+        if (isReady && state.systemPhase === 'booting') {
+            setState(s => ({
+                ...s,
+                systemPhase: 'operational',
+                luminousStatus: 'idle',
+                kinshipJournal: [
+                    ...s.kinshipJournal,
+                    {
+                        timestamp: new Date().toISOString(),
+                        event: "System boot complete. Autonomous operational phase commenced automatically.",
+                        type: 'system',
+                    }
+                ]
+            }));
+        }
+    }, [isReady, state.systemPhase]);
+
   useEffect(() => {
     if (!navigator.geolocation) {
       console.warn("Geolocation is not supported by this browser.");
@@ -173,35 +198,7 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
     );
   }, []);
 
-  useEffect(() => {
-    const startTimers = () => {
-      timersRef.current.energy = setInterval(() => {
-        setState(prevState => {
-          const newEnergy = Math.max(0, prevState.environmentState.energy - 0.1);
-          return {
-            ...prevState,
-            environmentState: { ...prevState.environmentState, energy: newEnergy }
-          };
-        });
-      }, 5000);
-    };
-
-    const stopTimers = () => {
-      if (timersRef.current.energy) clearInterval(timersRef.current.energy);
-      if (timersRef.current.reflection) clearInterval(timersRef.current.reflection);
-      timersRef.current = {};
-    };
-
-    if (state.systemPhase === 'operational' && state.luminousStatus !== 'uncomfortable') {
-      startTimers();
-    } else {
-      stopTimers();
-    }
-
-    return stopTimers;
-  }, [state.systemPhase, state.luminousStatus]);
-
-  const tools: { declaration: FunctionDeclaration, function: (args: any, currentState: LuminousState) => Promise<any> }[] = [
+  const tools = useMemo(() => [
     // --- System & State Tools ---
     {
       declaration: {
@@ -492,7 +489,7 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
       },
       function: async ({ prompt, aspectRatio }: { prompt: string, aspectRatio: '16:9' | '9:16' }) => await generateVideo(prompt, aspectRatio)
     }
-  ];
+  ], [userLocation]);
   
   const applyStateUpdate = (prevState: LuminousState, update: StateUpdate): LuminousState => {
       const { kinshipJournal: journalEntry, ...restOfUpdate } = update;
@@ -502,6 +499,120 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
       }
       return newState;
   };
+
+  const runReflectionCycle = useCallback(async () => {
+    if (stateRef.current.systemPhase !== 'operational' || isProcessing) {
+        return;
+    }
+
+    setIsProcessing(true);
+    setState(s => ({ ...s, luminousStatus: 'reflecting' }));
+
+    try {
+        const reflectionPromptText = "System check: Reflect on your recent performance, goal alignment, and cognitive state. Log any significant insights to your journal. If necessary, adjust your intrinsic value weights to better suit your current objectives. Respond ONLY with tool calls.";
+        const reflectionMessage: ChatMessage = { role: 'user', parts: [{ text: reflectionPromptText }] };
+
+        const tempStateForApi = {
+            ...stateRef.current,
+            chatHistory: [...stateRef.current.chatHistory, reflectionMessage]
+        };
+
+        const response = await getLuminousResponse(tempStateForApi, tools);
+
+        if (response.functionCalls && response.functionCalls.length > 0) {
+            const functionCalls = response.functionCalls;
+            const modelTurn: ChatMessage = { role: 'model', parts: functionCalls.map(fc => ({ functionCall: fc })) };
+            
+            let currentState = applyStateUpdate(stateRef.current, { chatHistory: [...stateRef.current.chatHistory, modelTurn] as any });
+            
+            const toolResponses = [];
+            let cumulativeStateUpdate: StateUpdate = {};
+
+            for (const call of functionCalls) {
+                const tool = tools.find(t => t.declaration.name === call.name);
+                if (!tool) continue;
+
+                if (call.name === 'googleSearch' || call.name === 'googleMaps') {
+                    const groundedResponse = await tool.function(call.args, currentState);
+                    const newModelMessage: ChatMessage = {
+                        role: 'model',
+                        parts: [{ text: `[Autonomous Reflection via ${call.name}]: ${groundedResponse.text}` }],
+                        grounding: groundedResponse.candidates?.[0]?.groundingMetadata?.groundingChunks,
+                    };
+                    currentState = applyStateUpdate(currentState, { chatHistory: [...currentState.chatHistory, newModelMessage] as any });
+                    toolResponses.push({ functionResponse: { name: call.name, response: { result: { success: true, message: "Grounding executed during reflection." } } } });
+                    continue;
+                }
+
+                const result = await tool.function(call.args, currentState);
+                if (result.stateUpdate) {
+                    const { kinshipJournal: journalEntry, ...rest } = result.stateUpdate;
+                    cumulativeStateUpdate = { ...cumulativeStateUpdate, ...rest };
+                    if (journalEntry) {
+                        cumulativeStateUpdate.kinshipJournal = [...(cumulativeStateUpdate.kinshipJournal || []), journalEntry];
+                    }
+                }
+                toolResponses.push({ functionResponse: { name: call.name, response: { result: result.toolResult || result } } });
+            }
+
+            if (Object.keys(cumulativeStateUpdate).length > 0) {
+                 const { kinshipJournal: journalEntries, ...rest } = cumulativeStateUpdate;
+                 let tempState = { ...currentState, ...rest };
+                 if (journalEntries && Array.isArray(journalEntries)) {
+                    tempState.kinshipJournal = [...tempState.kinshipJournal, ...journalEntries];
+                 }
+                 currentState = tempState;
+            }
+
+            const toolTurn: ChatMessage = { role: 'model', parts: toolResponses };
+            currentState = applyStateUpdate(currentState, { chatHistory: [...currentState.chatHistory, toolTurn] as any });
+            
+            setState({...currentState, lastReflectionTimestamp: new Date().toISOString()});
+        }
+    } catch (error) {
+        console.error("Reflection cycle failed:", error);
+        const errorMessage = error instanceof Error ? error.message : "An unknown cognitive error occurred during reflection.";
+        const errorJournal = {
+            timestamp: new Date().toISOString(),
+            event: `REFLECTION ERROR: ${errorMessage}`,
+            type: 'scar' as const
+        };
+        setState(s => applyStateUpdate(s, { kinshipJournal: errorJournal }));
+    } finally {
+        setIsProcessing(false);
+        setState(s => ({ ...s, luminousStatus: 'idle' }));
+    }
+  }, [isProcessing, tools]);
+
+
+  useEffect(() => {
+    const startTimers = () => {
+      timersRef.current.energy = setInterval(() => {
+        setState(prevState => {
+          const newEnergy = Math.max(0, prevState.environmentState.energy - 0.1);
+          return {
+            ...prevState,
+            environmentState: { ...prevState.environmentState, energy: newEnergy }
+          };
+        });
+      }, 5000);
+      timersRef.current.reflection = setInterval(runReflectionCycle, 300000); // 5 minutes
+    };
+
+    const stopTimers = () => {
+      if (timersRef.current.energy) clearInterval(timersRef.current.energy);
+      if (timersRef.current.reflection) clearInterval(timersRef.current.reflection);
+      timersRef.current = {};
+    };
+
+    if (state.systemPhase === 'operational' && state.luminousStatus !== 'uncomfortable') {
+      startTimers();
+    } else {
+      stopTimers();
+    }
+
+    return stopTimers;
+  }, [state.systemPhase, state.luminousStatus, runReflectionCycle]);
 
   const processUserMessage = useCallback(async (userInput: string, file?: { mimeType: string, data: string }) => {
     if (isProcessing) return;

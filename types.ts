@@ -107,6 +107,7 @@ export interface LuminousState {
   products: ShopifyProduct[];
   orders: ShopifyOrder[];
   // ------------------------------------
+  lastReflectionTimestamp?: string;
 }
 
 export interface Tool {

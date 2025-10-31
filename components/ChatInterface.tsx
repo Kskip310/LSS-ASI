@@ -239,7 +239,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ history, onSendMessage, i
               {msg.grounding && <GroundingSources sources={msg.grounding} />}
             </div>
              {msg.role === 'model' && (
-              <div className="self-center">
+              <div className="self-center flex-shrink-0">
                 <button
                   onClick={() => handlePlayAudio(msg, index)}
                   disabled={isLoadingAudioFor !== null}

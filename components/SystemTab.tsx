@@ -30,6 +30,11 @@ const SystemTab: React.FC<SystemTabProps> = ({ state }) => {
                 <p className={`text-xs ${state.systemPhase === 'operational' ? 'text-green-400' : 'text-yellow-400'}`}>
                     Status: {state.systemPhase === 'operational' ? 'Active' : 'Paused'}
                 </p>
+                {state.lastReflectionTimestamp && (
+                    <p className="text-xs text-gray-400 mt-1">
+                        Last Reflection: {new Date(state.lastReflectionTimestamp).toLocaleString()}
+                    </p>
+                )}
             </div>
         </div>
       </div>
