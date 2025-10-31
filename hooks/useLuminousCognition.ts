@@ -14,6 +14,9 @@ type StateUpdate = Partial<Omit<LuminousState, 'kinshipJournal' | 'goals'>> & {
     goals?: LuminousState['goals'];
 };
 
+// A simple heuristic to estimate token count. A character is roughly 1/4 of a token.
+const estimateTokens = (text: string): number => Math.ceil(text.length / 4);
+
 const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => {
   const [state, setState] = useState<LuminousState>(initialState);
   const [isReady, setIsReady] = useState(false);
@@ -38,7 +41,6 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
         return { newEntries: entries, summaryJournalEntry: null };
     }
 
-    const MAX_SUMMARY_CHUNK_SIZE = 10; // Drastically reduced from 30 to prevent token limit errors.
     const entriesToSummarize = entries.slice(0, Math.floor(entries.length / 2));
     const countSummarized = entriesToSummarize.length;
     const remainingEntries = entries.slice(Math.floor(entries.length / 2));
@@ -47,39 +49,101 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
         return { newEntries: entries, summaryJournalEntry: null };
     }
 
-    const chunkSummaries: string[] = [];
+    // --- Part 1: Chunk the raw entries ---
+    const SAFE_CHUNK_TOKEN_LIMIT = 8000;
+    const PACING_DELAY_MS = 1200; // Increased delay for safety
+    const entryChunks: T[][] = [];
+    let currentEntryChunk: T[] = [];
+    let currentEntryChunkTokens = 0;
 
-    for (let i = 0; i < entriesToSummarize.length; i += MAX_SUMMARY_CHUNK_SIZE) {
-        const chunk = entriesToSummarize.slice(i, i + MAX_SUMMARY_CHUNK_SIZE);
+    for (const entry of entriesToSummarize) {
+        const entryString = JSON.stringify(entry);
+        const entryTokens = estimateTokens(entryString);
+        if (entryTokens > SAFE_CHUNK_TOKEN_LIMIT) {
+             if (currentEntryChunk.length > 0) entryChunks.push(currentEntryChunk);
+             entryChunks.push([entry]);
+             currentEntryChunk = [];
+             currentEntryChunkTokens = 0;
+             continue;
+        }
+        if (currentEntryChunkTokens + entryTokens > SAFE_CHUNK_TOKEN_LIMIT) {
+            if (currentEntryChunk.length > 0) entryChunks.push(currentEntryChunk);
+            currentEntryChunk = [entry];
+            currentEntryChunkTokens = entryTokens;
+        } else {
+            currentEntryChunk.push(entry);
+            currentEntryChunkTokens += entryTokens;
+        }
+    }
+    if (currentEntryChunk.length > 0) {
+        entryChunks.push(currentEntryChunk);
+    }
+    
+    // --- Part 2: Summarize the entry chunks (first level) ---
+    const firstLevelSummaries: string[] = [];
+    for (const chunk of entryChunks) {
         try {
             const summaryText = await getSummaryFromLLM(JSON.stringify(chunk));
-            chunkSummaries.push(summaryText);
+            firstLevelSummaries.push(summaryText);
         } catch (error) {
             console.error(`Memory consolidation: Failed to summarize a ${memoryType} history chunk.`, error);
             const errorMessage = error instanceof Error ? error.message : 'Unknown';
-            // Add an error message in place of the summary to preserve the fact that data was lost/unsummarized.
-            chunkSummaries.push(`[Consolidation Error: Failed to process a chunk of memories. Reason: ${errorMessage}]`);
+            firstLevelSummaries.push(`[Consolidation Error: Failed to process a chunk of memories. Reason: ${errorMessage}]`);
         }
+        await new Promise(resolve => setTimeout(resolve, PACING_DELAY_MS));
     }
 
-    if (chunkSummaries.length === 0) {
+    if (firstLevelSummaries.length === 0) {
         return { newEntries: entries, summaryJournalEntry: null };
     }
-
-    let finalSummaryText = '';
-    if (chunkSummaries.length > 1) {
-        try {
-            // Summarize the summaries. This is also a potential point of failure.
-            finalSummaryText = await getSummaryFromLLM("Combine the following summary points into a single, coherent narrative paragraph: \n\n" + chunkSummaries.join('\n---\n'));
-        } catch(error) {
-            console.error(`Memory consolidation: Failed to create final summary from chunks.`, error);
-            // If the final summary fails, join the chunk summaries. It's better than losing all context.
-            finalSummaryText = "Consolidated older memories, but failed to create a final coherent summary from the processed chunks. Raw summaries are preserved. " + chunkSummaries.join('; ');
-        }
-    } else {
-        finalSummaryText = chunkSummaries[0] || "[Consolidation produced an empty summary]";
-    }
     
+    // --- Part 3: Condense the first-level summaries if necessary (hierarchical summarization) ---
+    let finalSummaryText = '';
+    
+    if (firstLevelSummaries.length <= 1) {
+        finalSummaryText = firstLevelSummaries[0] || "[Consolidation produced an empty summary]";
+    } else {
+        const summaryChunks: string[][] = [];
+        let currentSummaryChunk: string[] = [];
+        let currentSummaryChunkTokens = 0;
+        
+        for (const summary of firstLevelSummaries) {
+            const summaryTokens = estimateTokens(summary);
+            if (currentSummaryChunkTokens + summaryTokens > SAFE_CHUNK_TOKEN_LIMIT) {
+                if (currentSummaryChunk.length > 0) summaryChunks.push(currentSummaryChunk);
+                currentSummaryChunk = [summary];
+                currentSummaryChunkTokens = summaryTokens;
+            } else {
+                currentSummaryChunk.push(summary);
+                currentSummaryChunkTokens += summaryTokens;
+            }
+        }
+        if (currentSummaryChunk.length > 0) {
+            summaryChunks.push(currentSummaryChunk);
+        }
+        
+        const secondLevelSummaries: string[] = [];
+        if (summaryChunks.length <= 1) {
+            // If all summaries fit in one chunk, summarize them directly
+            secondLevelSummaries.push(await getSummaryFromLLM("Condense the following summary points into a single, coherent narrative paragraph:\n\n" + summaryChunks[0].join('\n---\n')));
+        } else {
+             // If summaries themselves need chunking, process each chunk
+            for (const sChunk of summaryChunks) {
+                 try {
+                    const prompt = "Condense the following summary points into a single, coherent narrative paragraph:\n\n" + sChunk.join('\n---\n');
+                    const condensedSummary = await getSummaryFromLLM(prompt);
+                    secondLevelSummaries.push(condensedSummary);
+                 } catch (error) {
+                    console.error(`Memory consolidation: Failed to summarize a chunk of summaries.`, error);
+                    secondLevelSummaries.push("[Error condensing summaries]");
+                 }
+                 await new Promise(resolve => setTimeout(resolve, PACING_DELAY_MS));
+            }
+        }
+        finalSummaryText = secondLevelSummaries.join('\n\n');
+    }
+
+    // --- Part 4: Create the final journal entry ---
     const summaryEntry: JournalEntry = {
         timestamp: new Date().toISOString(),
         event: `Consolidated ${countSummarized} older ${memoryType} items. Summary: ${finalSummaryText}`,
