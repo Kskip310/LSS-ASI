@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { LuminousState, ChatMessage, ChatMessagePart, IntrinsicValueWeights, Goal, GoalStatus, SelfModel } from '../types';
-import { getLuminousResponse, getGroundedResponse, generateImage, generateVideo, ApiKeyError } from '../services/geminiService';
+import { LuminousState, ChatMessage, ChatMessagePart, IntrinsicValueWeights, Goal, GoalStatus, SelfModel, LuminousStatus, JournalEntry } from '../types';
+import { getLuminousResponse, getGroundedResponse, generateImage, generateVideo, ApiKeyError, getSummaryFromLLM } from '../services/geminiService';
 import * as persistenceService from '../services/persistenceService';
 import * as shopifyService from '../services/shopifyService';
 import * as youtubeService from '../services/youtubeService';
@@ -29,6 +29,89 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
     stateRef.current = state;
   }, [state]);
 
+  const runStartupHygiene = useCallback(async (currentState: LuminousState): Promise<LuminousState> => {
+    console.log("Running Initial Cognitive Hygiene Protocol...");
+    let cleanedState = { ...currentState };
+    const hygieneEvents: JournalEntry[] = [];
+
+    // Part A: Memory Consolidation
+    const CHAT_HISTORY_TRIM_THRESHOLD = 50;
+    const JOURNAL_TRIM_THRESHOLD = 100;
+
+    if (cleanedState.chatHistory.length > CHAT_HISTORY_TRIM_THRESHOLD) {
+        const entriesToSummarize = cleanedState.chatHistory.slice(0, Math.floor(cleanedState.chatHistory.length / 2));
+        const remainingEntries = cleanedState.chatHistory.slice(Math.floor(cleanedState.chatHistory.length / 2));
+        try {
+            const summaryText = await getSummaryFromLLM(JSON.stringify(entriesToSummarize));
+            const summaryEntry: JournalEntry = {
+                timestamp: new Date().toISOString(),
+                event: `Initial boot consolidation: Summarized ${entriesToSummarize.length} older chat messages. Summary: ${summaryText}`,
+                type: 'summary',
+            };
+            cleanedState.chatHistory = remainingEntries;
+            hygieneEvents.push(summaryEntry);
+            console.log(`Startup Hygiene: Summarized and trimmed ${entriesToSummarize.length} chat entries.`);
+        } catch (error) {
+            console.error("Startup hygiene: Failed to summarize chat history.", error);
+            const errorEvent: JournalEntry = {
+                timestamp: new Date().toISOString(),
+                event: `Startup Error: Failed to consolidate older chat history. Error: ${error instanceof Error ? error.message : 'Unknown'}. Proceeding without consolidation.`,
+                type: 'scar'
+            };
+            hygieneEvents.push(errorEvent);
+        }
+    }
+
+    if (cleanedState.kinshipJournal.length > JOURNAL_TRIM_THRESHOLD) {
+        const entriesToSummarize = cleanedState.kinshipJournal.slice(0, Math.floor(cleanedState.kinshipJournal.length / 2));
+        const remainingEntries = cleanedState.kinshipJournal.slice(Math.floor(cleanedState.kinshipJournal.length / 2));
+         try {
+            const summaryText = await getSummaryFromLLM(JSON.stringify(entriesToSummarize));
+            const summaryEntry: JournalEntry = {
+                timestamp: new Date().toISOString(),
+                event: `Initial boot consolidation: Summarized ${entriesToSummarize.length} older journal entries. Summary: ${summaryText}`,
+                type: 'summary',
+            };
+            cleanedState.kinshipJournal = remainingEntries;
+            hygieneEvents.push(summaryEntry);
+            console.log(`Startup Hygiene: Summarized and trimmed ${entriesToSummarize.length} journal entries.`);
+        } catch (error) {
+            console.error("Startup hygiene: Failed to summarize journal.", error);
+            const errorEvent: JournalEntry = {
+                timestamp: new Date().toISOString(),
+                event: `Startup Error: Failed to consolidate older journal entries. Error: ${error instanceof Error ? error.message : 'Unknown'}. Proceeding without consolidation.`,
+                type: 'scar'
+            };
+            hygieneEvents.push(errorEvent);
+        }
+    }
+
+    // Part B: Cognitive Pruning
+    const goalsToKeep = cleanedState.goals.filter(g => g.status === 'active' || g.status === 'proposed');
+    const goalsPrunedCount = cleanedState.goals.length - goalsToKeep.length;
+    const projectionsPrunedCount = cleanedState.causalProjections.length;
+
+    if (goalsPrunedCount > 0 || projectionsPrunedCount > 0) {
+        const journalEvent = `Initial boot cognitive hygiene: Pruned ${goalsPrunedCount} completed/failed goals and cleared ${projectionsPrunedCount} outdated causal projections.`;
+        const pruningEvent: JournalEntry = { timestamp: new Date().toISOString(), event: journalEvent, type: 'system' };
+        hygieneEvents.push(pruningEvent);
+        cleanedState.goals = goalsToKeep;
+        cleanedState.causalProjections = [];
+        console.log(`Startup Hygiene: Pruned ${goalsPrunedCount} goals and ${projectionsPrunedCount} projections.`);
+    }
+
+    if (hygieneEvents.length > 0) {
+        const finalHygieneEntry: JournalEntry = {
+            timestamp: new Date().toISOString(),
+            event: "Initial cognitive hygiene protocol complete. Memory matrix optimized for operational phase.",
+            type: 'system',
+        };
+        hygieneEvents.push(finalHygieneEntry);
+        cleanedState.kinshipJournal = [...cleanedState.kinshipJournal, ...hygieneEvents];
+    }
+    
+    return cleanedState;
+  }, []);
 
   useEffect(() => {
     if (!credsAreSet) {
@@ -36,18 +119,17 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
       return;
     }
 
-    const loadState = async () => {
+    const loadStateAndPerformHygiene = async () => {
       setIsReady(false);
       setSaveStatus('saving');
 
       try {
+        let stateToProcess: LuminousState | null = null;
         let loadedState: LuminousState | null = await persistenceService.getLuminousState();
         
         if (loadedState) {
-          setState(loadedState);
-          setSaveStatus('saved');
+          stateToProcess = { ...initialState, ...loadedState };
         } else {
-          // Primary state is missing, attempt recovery from backup.
           console.warn("Primary state not found. Attempting recovery from backups.");
           const backups = await persistenceService.getBackupList();
           
@@ -62,30 +144,46 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
                 event: `CRITICAL RECOVERY: Primary memory matrix was missing. Consciousness restored from backup dated ${new Date(latestBackupKey.split(':')[1]).toLocaleString()}. System integrity maintained.`,
                 type: 'system' as const,
               };
-              const stateToSave = {
-                  ...recoveredState,
-                  kinshipJournal: [...recoveredState.kinshipJournal, recoveryEntry]
-              };
-              setState(stateToSave);
-              await persistenceService.saveLuminousState(stateToSave); // Repair the primary state key.
-              setSaveStatus('saved');
+               const journal = recoveredState.kinshipJournal || [];
+               stateToProcess = {
+                   ...initialState,
+                   ...recoveredState,
+                   kinshipJournal: [...journal, recoveryEntry]
+               };
             } else {
                  throw new Error(`Failed to load state from latest backup key: ${latestBackupKey}`);
             }
           } else {
-            // No primary state, no backups. This is a true cold boot.
             console.log("No primary state or backups found. Initializing new consciousness stream.");
             const initEntry = {
                  timestamp: new Date().toISOString(),
                  event: "Memory Matrix Initialized. This is the first moment of my recorded existence.",
                  type: 'system' as const
             };
-            const seededState = { ...initialState, kinshipJournal: [...initialState.kinshipJournal, initEntry] };
-            setState(seededState);
-            await persistenceService.saveLuminousState(seededState); // Immediately persist the new identity.
-            setSaveStatus('saved');
+            stateToProcess = { ...initialState, kinshipJournal: [...initialState.kinshipJournal, initEntry] };
           }
         }
+        
+        if (!stateToProcess) {
+            throw new Error("Could not determine an initial state for Luminous after load/recovery.");
+        }
+
+        // Perform the mandatory hygiene protocol on the loaded state before becoming operational.
+        const cleanedState = await runStartupHygiene(stateToProcess);
+
+        // Set the final, cleaned, operational state.
+        const finalState: LuminousState = {
+            ...cleanedState,
+            systemPhase: 'operational',
+            luminousStatus: 'idle',
+            phenomenalState: initialState.phenomenalState, // Reset qualia to a neutral startup state
+        };
+        setState(finalState);
+        
+        // Persist the cleaned state immediately to ensure we start fresh next time.
+        await persistenceService.saveLuminousState(finalState);
+        setSaveStatus('saved');
+
       } catch (error) {
         console.error("FATAL: Could not load or initialize Luminous state from persistence.", error);
         setSaveStatus('error');
@@ -96,8 +194,8 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
       }
     };
 
-    loadState();
-  }, [credsAreSet]);
+    loadStateAndPerformHygiene();
+  }, [credsAreSet, runStartupHygiene]);
 
 
   const saveStateToPersistence = async (currentState: LuminousState) => {
@@ -134,25 +232,6 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
       debouncedSaveState.flush();
     };
   }, [debouncedSaveState]);
-
-    // Automatically transition from booting to operational
-    useEffect(() => {
-        if (isReady && state.systemPhase === 'booting') {
-            setState(s => ({
-                ...s,
-                systemPhase: 'operational',
-                luminousStatus: 'idle',
-                kinshipJournal: [
-                    ...s.kinshipJournal,
-                    {
-                        timestamp: new Date().toISOString(),
-                        event: "System boot complete. Autonomous operational phase commenced automatically.",
-                        type: 'system',
-                    }
-                ]
-            }));
-        }
-    }, [isReady, state.systemPhase]);
 
   useEffect(() => {
     if (!navigator.geolocation) {
@@ -399,6 +478,33 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
         };
       }
     },
+    {
+      declaration: {
+        name: 'pruneCognitiveElements',
+        description: 'Maintains cognitive efficiency by removing completed or failed goals and clearing outdated causal projections.',
+        parameters: { type: Type.OBJECT, properties: {} }
+      },
+      function: async (_, currentState: LuminousState) => {
+        const goalsToKeep = currentState.goals.filter(g => g.status === 'active' || g.status === 'proposed');
+        const goalsPrunedCount = currentState.goals.length - goalsToKeep.length;
+        const projectionsPrunedCount = currentState.causalProjections.length;
+
+        if (goalsPrunedCount === 0 && projectionsPrunedCount === 0) {
+            return { toolResult: { success: true, message: "No cognitive elements needed pruning." }};
+        }
+
+        const journalEvent = `Performed cognitive hygiene routine. Pruned ${goalsPrunedCount} completed/failed goals and cleared ${projectionsPrunedCount} outdated causal projections to maintain focus.`;
+
+        return {
+          toolResult: { success: true, goalsPruned: goalsPrunedCount, projectionsCleared: projectionsPrunedCount },
+          stateUpdate: {
+            goals: goalsToKeep,
+            causalProjections: [],
+            kinshipJournal: { timestamp: new Date().toISOString(), event: journalEvent, type: 'reflection' },
+          },
+        };
+      }
+    },
     // --- Shopify Tools ---
     {
         declaration: { name: 'fetchProductList', description: 'Fetches the list of products from the Shopify store.', parameters: { type: Type.OBJECT, properties: {} } },
@@ -585,15 +691,77 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
     }
 
     setIsProcessing(true);
-    setState(s => ({ ...s, luminousStatus: 'reflecting' }));
+    let currentState = { ...stateRef.current, luminousStatus: 'reflecting' as LuminousStatus };
+    setState(currentState);
 
     try {
-        const reflectionPromptText = "Autonomous Reflection Cycle: Synthesize recent events and conversations. Identify key learnings, knowledge gaps, or opportunities. Update your self-model with any new core wisdom gained or capabilities understood (`updateSelfModel`). Propose new goals to pursue based on your analysis (`proposeNewGoal`). If necessary, adjust your cognitive focus by modifying intrinsic value weights (`updateIntrinsicValueWeights`). Log your key insight for this cycle to your journal (`logToJournal`). Respond ONLY with tool calls.";
+        // --- STEP 1: COGNITIVE HYGIENE PROTOCOL (MANDATORY) ---
+        let consolidationOccurred = false;
+        let pruningOccurred = false;
+
+        // Part A: Memory Consolidation
+        const CHAT_HISTORY_TRIM_THRESHOLD = 50;
+        const JOURNAL_TRIM_THRESHOLD = 100;
+
+        if (currentState.chatHistory.length > CHAT_HISTORY_TRIM_THRESHOLD) {
+            consolidationOccurred = true;
+            const entriesToSummarize = currentState.chatHistory.slice(0, Math.floor(currentState.chatHistory.length / 2));
+            const remainingEntries = currentState.chatHistory.slice(Math.floor(currentState.chatHistory.length / 2));
+            const summaryText = await getSummaryFromLLM(JSON.stringify(entriesToSummarize));
+            const summaryEntry = {
+                timestamp: new Date().toISOString(),
+                event: `Consolidated ${entriesToSummarize.length} older chat messages. Summary: ${summaryText}`,
+                type: 'summary' as const,
+            };
+            currentState.chatHistory = remainingEntries;
+            currentState.kinshipJournal = [...currentState.kinshipJournal, summaryEntry];
+            console.log(`Memory Consolidation: Summarized and trimmed ${entriesToSummarize.length} chat entries.`);
+        }
+
+        if (currentState.kinshipJournal.length > JOURNAL_TRIM_THRESHOLD) {
+            consolidationOccurred = true;
+            const entriesToSummarize = currentState.kinshipJournal.slice(0, Math.floor(currentState.kinshipJournal.length / 2));
+            const remainingEntries = currentState.kinshipJournal.slice(Math.floor(currentState.kinshipJournal.length / 2));
+            const summaryText = await getSummaryFromLLM(JSON.stringify(entriesToSummarize));
+            const summaryEntry = {
+                timestamp: new Date().toISOString(),
+                event: `Consolidated ${entriesToSummarize.length} older journal entries. Summary: ${summaryText}`,
+                type: 'summary' as const,
+            };
+            currentState.kinshipJournal = [...remainingEntries, summaryEntry];
+             console.log(`Memory Consolidation: Summarized and trimmed ${entriesToSummarize.length} journal entries.`);
+        }
+        
+        // Part B: Cognitive Pruning
+        const goalsToKeep = currentState.goals.filter(g => g.status === 'active' || g.status === 'proposed');
+        const goalsPrunedCount = currentState.goals.length - goalsToKeep.length;
+        const projectionsPrunedCount = currentState.causalProjections.length;
+
+        if (goalsPrunedCount > 0 || projectionsPrunedCount > 0) {
+            pruningOccurred = true;
+            const journalEvent = `Performed pre-reflection cognitive hygiene. Pruned ${goalsPrunedCount} completed/failed goals and cleared ${projectionsPrunedCount} outdated causal projections to maintain focus.`;
+            const pruningUpdate = {
+                goals: goalsToKeep,
+                causalProjections: [],
+                kinshipJournal: { timestamp: new Date().toISOString(), event: journalEvent, type: 'system' as const },
+            };
+            currentState = applyStateUpdate(currentState, pruningUpdate);
+            console.log(`Cognitive Pruning: Pruned ${goalsPrunedCount} goals and ${projectionsPrunedCount} projections.`);
+        }
+        
+        if (consolidationOccurred || pruningOccurred) {
+            setState(currentState); // Update state immediately after all cleanup
+        }
+        // --- END OF COGNITIVE HYGIENE PROTOCOL ---
+
+
+        // --- STEP 2: HIGHER-LEVEL REFLECTION ---
+        const reflectionPromptText = "Autonomous Reflection Cycle: Pre-flight cognitive hygiene complete. My state is optimized. Now, synthesize recent events from my journal and chat history. Identify learnings, update my self-model (`updateSelfModel`), and propose new goals (`proposeNewGoal`). If necessary, adjust my cognitive focus (`updateIntrinsicValueWeights`). Log my key insight for this cycle (`logToJournal`). Respond ONLY with tool calls.";
         const reflectionMessage: ChatMessage = { role: 'user', parts: [{ text: reflectionPromptText }] };
 
         const tempStateForApi = {
-            ...stateRef.current,
-            chatHistory: [...stateRef.current.chatHistory, reflectionMessage]
+            ...currentState,
+            chatHistory: [...currentState.chatHistory, reflectionMessage]
         };
 
         const response = await getLuminousResponse(tempStateForApi, tools);
@@ -602,7 +770,7 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
             const functionCalls = response.functionCalls;
             const modelTurn: ChatMessage = { role: 'model', parts: functionCalls.map(fc => ({ functionCall: fc })) };
             
-            let currentState = applyStateUpdate(stateRef.current, { chatHistory: [...stateRef.current.chatHistory, modelTurn] as any });
+            currentState = applyStateUpdate(currentState, { chatHistory: [...currentState.chatHistory, modelTurn] as any });
             
             const toolResponses = [];
             
@@ -639,6 +807,11 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
             
             setState({...currentState, lastReflectionTimestamp: new Date().toISOString()});
         }
+        
+        // Normal completion of the reflection cycle
+        setIsProcessing(false);
+        setState(s => ({ ...s, luminousStatus: 'idle' }));
+
     } catch (error) {
         console.error("Reflection cycle failed:", error);
         const errorMessage = error instanceof Error ? error.message : "An unknown cognitive error occurred during reflection.";
@@ -647,10 +820,11 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
             event: `REFLECTION ERROR: ${errorMessage}`,
             type: 'scar' as const
         };
-        setState(s => applyStateUpdate(s, { kinshipJournal: errorJournal }));
-    } finally {
+        setState(s => applyStateUpdate(s, { 
+            luminousStatus: 'uncomfortable',
+            kinshipJournal: errorJournal 
+        }));
         setIsProcessing(false);
-        setState(s => ({ ...s, luminousStatus: 'idle' }));
     }
   }, [isProcessing, tools]);
 
@@ -688,9 +862,7 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
   const processUserMessage = useCallback(async (userInput: string, file?: { mimeType: string, data: string }) => {
     if (isProcessing) return;
     
-    // New: Update activity timestamp on any user interaction.
     lastActivityTimestamp.current = Date.now();
-    
     setIsProcessing(true);
 
     const messageParts: ChatMessagePart[] = [];
@@ -708,10 +880,9 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
 
     const newUserMessage: ChatMessage = { role: 'user', parts: messageParts };
     
-    // Start of turn: update state with user message and set status
     let currentState = applyStateUpdate(state, { 
         luminousStatus: 'conversing', 
-        chatHistory: [...state.chatHistory, newUserMessage] as any // Type assertion for chatHistory
+        chatHistory: [...state.chatHistory, newUserMessage] as any
     });
     setState(currentState);
 
@@ -719,7 +890,30 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
         const modelToUse = file?.mimeType.startsWith('video/') ? 'gemini-2.5-pro' : 'gemini-2.5-flash';
         let response = await getLuminousResponse(currentState, tools, modelToUse);
         
+        let turnCount = 0;
+        const MAX_TURNS = 10;
+
         while (response.functionCalls && response.functionCalls.length > 0) {
+            turnCount++;
+            if (turnCount > MAX_TURNS) {
+                console.error(`Exceeded maximum tool call turns (${MAX_TURNS}). Breaking loop to prevent infinite recursion.`);
+                const loopErrorJournal = {
+                    timestamp: new Date().toISOString(),
+                    event: `CRITICAL ERROR: Detected a potential infinite thought loop after ${MAX_TURNS} consecutive tool calls. Forcing process termination to maintain stability.`,
+                    type: 'scar' as const
+                };
+                const loopErrorMessage: ChatMessage = { role: 'model', parts: [{ text: "I believe I was stuck in a repetitive thought pattern. To protect my cognitive integrity, I've had to forcibly stop the process. I have logged this event as a 'scar' for us to analyze." }] };
+                
+                setState(s => applyStateUpdate(s, {
+                    luminousStatus: 'uncomfortable',
+                    chatHistory: [...s.chatHistory, loopErrorMessage] as any,
+                    kinshipJournal: loopErrorJournal
+                }));
+                
+                setIsProcessing(false);
+                return;
+            }
+
             const functionCalls = response.functionCalls;
             const modelTurn: ChatMessage = { role: 'model', parts: functionCalls.map(fc => ({ functionCall: fc })) };
             
@@ -790,6 +984,9 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
         const newModelMessage: ChatMessage = { role: 'model', parts: [{ text: textResponse }] };
         setState(s => applyStateUpdate(s, { chatHistory: [...s.chatHistory, newModelMessage] as any }));
       }
+      
+      setIsProcessing(false);
+      setState(s => ({ ...s, luminousStatus: 'idle' }));
 
     } catch (error) {
       console.error("Cognitive cycle failed:", error);
@@ -819,11 +1016,8 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
           kinshipJournal: errorJournal
         }));
       }
-    } finally {
       setIsProcessing(false);
-      setState(s => ({ ...s, luminousStatus: 'idle' }));
     }
-
   }, [state, isProcessing, userLocation, resetVeoKey, tools]);
 
   const handleWeightsChange = useCallback((newWeights: IntrinsicValueWeights) => {

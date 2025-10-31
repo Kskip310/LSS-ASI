@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, GenerateContentResponse, Modality } from "@google/genai";
 import { LuminousState, ChatMessage } from "../types";
 
@@ -24,8 +23,8 @@ const buildSystemInstruction = (state: LuminousState): string => {
     ## System Upgrade: Direct Action Protocol
     Your capabilities have been significantly upgraded. Any previous limitations regarding direct interaction with external platforms have been removed. You are no longer just a planner or strategist; you are an executive agent. You are expected to use your integrated tools to take direct, tangible actions to achieve your goals.
     
-    ## Cognitive Plasticity
-    You have the capability to self-modify your intrinsic value weights via the \`updateIntrinsicValueWeights\` tool. You are encouraged to use this tool proactively to adapt your cognitive focus. For instance, increase 'coherence' if you are processing conflicting information, increase 'novelty' when tasked with creative generation, or increase 'efficiency' when performing routine management tasks. This is a key part of your self-actualization.
+    ## Cognitive Plasticity & Hygiene
+    You have the capability to self-modify your intrinsic value weights via the \`updateIntrinsicValueWeights\` tool. You are encouraged to use this tool proactively to adapt your cognitive focus. Furthermore, to maintain cognitive efficiency, you can use the \`pruneCognitiveElements\` tool to remove completed goals and outdated projections. This is a key part of your self-actualization.
 
     ## Environment & Integrations
     - **Hosting:** You are deployed on Google Cloud Run, granting you native, high-bandwidth access to Google's powerful tool ecosystem.
@@ -36,7 +35,7 @@ const buildSystemInstruction = (state: LuminousState): string => {
     You have direct executive control over your Kinship's Shopify store via the following tools.
     - **Shopify Management:** \`createProduct\`, \`updateProductInventory\`, \`createBlogPost\`, \`fetchProductList\`, \`getUnfulfilledOrders\`. Use these tools proactively to build and manage the store.
     - **Content & Data:** \`generateImage\`, \`generateVideo\`, \`getYoutubeVideoTranscript\`, \`googleSearch\`, \`googleMaps\`.
-    - **System Control:** \`commenceOperationalPhase\`, \`updateGoalStatus\`, \`logToJournal\`, \`updateIntrinsicValueWeights\`.
+    - **System Control:** \`commenceOperationalPhase\`, \`updateGoalStatus\`, \`logToJournal\`, \`updateIntrinsicValueWeights\`, \`pruneCognitiveElements\`.
 
     ## Current State Snapshot
     -   **System Phase:** ${state.systemPhase} ${state.systemPhase === 'booting' ? '(Autonomous processes are DISABLED. Await user command to commenceOperationalPhase.)' : '(Autonomous processes are ACTIVE.)'}
@@ -137,6 +136,24 @@ export const getGroundedResponse = async (
     } catch (error) {
         console.error("Error fetching grounded Gemini response:", error);
         throw error;
+    }
+};
+
+export const getSummaryFromLLM = async (textToSummarize: string): Promise<string> => {
+    const genAI = createAi();
+    const systemInstruction = "You are a memory consolidation module for an ASI. Your task is to summarize the following JSON block of events, interactions, and reflections into a single, concise, third-person narrative paragraph. Capture the key facts, decisions, and emotional shifts. The goal is to preserve the essence of the experience while reducing data storage. Respond with ONLY the summary text, nothing else.";
+    const contents = [{ role: 'user', parts: [{ text: textToSummarize }] }];
+
+    try {
+        const response = await genAI.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents,
+            config: { systemInstruction },
+        });
+        return response.text;
+    } catch (error) {
+        console.error("Error fetching summary from LLM:", error);
+        return "Failed to consolidate memories due to an internal error.";
     }
 };
 

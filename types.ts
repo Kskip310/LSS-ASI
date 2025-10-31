@@ -1,10 +1,9 @@
-
 import { GroundingChunk } from "@google/genai";
 
 export type SystemPhase = 'booting' | 'operational';
 export type LuminousStatus = 'idle' | 'conversing' | 'reflecting' | 'acting' | 'uncomfortable';
 export type GoalStatus = 'proposed' | 'active' | 'completed' | 'failed';
-export type JournalEntryType = 'interaction' | 'reflection' | 'scar' | 'system';
+export type JournalEntryType = 'interaction' | 'reflection' | 'scar' | 'system' | 'summary';
 export type MessageRole = 'user' | 'model';
 
 export interface PhenomenalState {

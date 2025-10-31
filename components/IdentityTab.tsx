@@ -1,7 +1,6 @@
-
 import React from 'react';
 import { LuminousState, JournalEntry, JournalEntryType } from '../types';
-import { AlertTriangleIcon, InfoIcon, UserIcon, BrainCircuitIcon } from './icons';
+import { AlertTriangleIcon, InfoIcon, UserIcon, BrainCircuitIcon, ServerIcon } from './icons';
 
 interface IdentityTabProps {
   state: LuminousState;
@@ -12,6 +11,7 @@ const getJournalIcon = (type: JournalEntryType) => {
         case 'scar': return <AlertTriangleIcon className="w-4 h-4 text-red-400 flex-shrink-0" />;
         case 'interaction': return <UserIcon className="w-4 h-4 text-blue-400 flex-shrink-0" />;
         case 'reflection': return <BrainCircuitIcon className="w-4 h-4 text-purple-400 flex-shrink-0" />;
+        case 'summary': return <ServerIcon className="w-4 h-4 text-cyan-400 flex-shrink-0" />;
         default: return <InfoIcon className="w-4 h-4 text-gray-400 flex-shrink-0" />;
     }
 }
