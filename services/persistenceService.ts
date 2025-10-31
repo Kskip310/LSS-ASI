@@ -4,15 +4,11 @@ const STATE_KEY = 'luminous_state';
 const BACKUP_LIST_KEY = 'luminous_backups';
 const MAX_BACKUPS = 20;
 
-const SETTINGS_KEYS = {
-  UPSTASH_URL: 'LSS_UPSTASH_URL',
-  UPSTASH_TOKEN: 'LSS_UPSTASH_TOKEN',
-};
-
 const getCredentials = () => {
-    const url = localStorage.getItem(SETTINGS_KEYS.UPSTASH_URL);
-    const token = localStorage.getItem(SETTINGS_KEYS.UPSTASH_TOKEN);
+    const url = localStorage.getItem('LSS_UPSTASH_URL');
+    const token = localStorage.getItem('LSS_UPSTASH_TOKEN');
     if (!url || !token) {
+        console.warn("Upstash credentials not found in local storage. Persistence will be disabled.");
         return null;
     }
     return { url, token };
@@ -98,6 +94,36 @@ export const getBackupList = async (): Promise<string[]> => {
         return [];
     }
 };
+
+export const getBackupState = async (backupKey: string): Promise<LuminousState | null> => {
+    const creds = getCredentials();
+    if (!creds) return null;
+
+    try {
+        const response = await fetch(`${creds.url}/get/${backupKey}`, {
+            headers: {
+                Authorization: `Bearer ${creds.token}`,
+            },
+        });
+
+        if (!response.ok) {
+            const errorBody = await response.json().catch(() => ({ error: 'Unknown error structure' }));
+            const errorMessage = errorBody.error || response.statusText;
+            throw new Error(`Failed to fetch backup state from Upstash: ${errorMessage}`);
+        }
+
+        const data = await response.json();
+        if (data.error) {
+            throw new Error(`Upstash API error on getBackupState: ${data.error}`);
+        }
+
+        return data.result ? JSON.parse(data.result) : null;
+    } catch (error) {
+        console.error(`Error getting backup state for key ${backupKey}:`, error);
+        throw error;
+    }
+};
+
 
 export const restoreStateFromBackup = async (backupKey: string): Promise<void> => {
     const creds = getCredentials();

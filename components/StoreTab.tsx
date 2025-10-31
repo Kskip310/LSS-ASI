@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { LuminousState } from '../types';
 
@@ -16,7 +17,7 @@ const StoreTab: React.FC<StoreTabProps> = ({ state }) => {
 
         <div>
           <h4 className="font-semibold text-gray-300 mb-2">Product Inventory</h4>
-          <div className="space-y-1 h-24 overflow-y-auto pr-2">
+          <div className="space-y-1 h-32 overflow-y-auto pr-2">
             {state.products.length > 0 ? state.products.map(p => (
               <div key={p.id} className="grid grid-cols-2 text-gray-400">
                 <span>{p.name}</span>
@@ -28,7 +29,7 @@ const StoreTab: React.FC<StoreTabProps> = ({ state }) => {
 
         <div className="mt-4">
           <h4 className="font-semibold text-gray-300 mb-2">Unfulfilled Orders</h4>
-          <div className="space-y-1 h-24 overflow-y-auto pr-2">
+          <div className="space-y-1 h-32 overflow-y-auto pr-2">
             {state.orders.length > 0 ? state.orders.map(o => (
               <div key={o.id} className="grid grid-cols-3 text-gray-400">
                 <span>{o.id.substring(o.id.lastIndexOf('/') + 1)}</span>
@@ -37,30 +38,6 @@ const StoreTab: React.FC<StoreTabProps> = ({ state }) => {
               </div>
             )) : <p className="text-gray-500">No order data loaded. Use a tool to fetch it.</p>}
           </div>
-        </div>
-
-        <div className="mt-4">
-            <h4 className="font-semibold text-gray-300 mb-2">Collections</h4>
-            <div className="space-y-1 h-24 overflow-y-auto pr-2">
-                {state.collections.length > 0 ? state.collections.map(c => (
-                    <div key={c.id} className="grid grid-cols-2 text-gray-400">
-                        <span>{c.title}</span>
-                        <span className="text-right">{c.productsCount} products</span>
-                    </div>
-                )) : <p className="text-gray-500">No collection data loaded. Use a tool to fetch it.</p>}
-            </div>
-        </div>
-
-        <div className="mt-4">
-            <h4 className="font-semibold text-gray-300 mb-2">Published Pages</h4>
-            <div className="space-y-1 h-24 overflow-y-auto pr-2">
-                {state.pages.length > 0 ? state.pages.map(p => (
-                    <div key={p.id} className="grid grid-cols-2 text-gray-400">
-                        <span>{p.title}</span>
-                        <span className="text-right font-mono">/{p.handle}</span>
-                    </div>
-                )) : <p className="text-gray-500">No page data loaded. Use a tool to fetch it.</p>}
-            </div>
         </div>
       </div>
     </div>
