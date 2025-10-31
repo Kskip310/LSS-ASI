@@ -1,7 +1,5 @@
-
-
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { LuminousState, ChatMessage, ChatMessagePart, IntrinsicValueWeights, GoalStatus } from '../types';
+import { LuminousState, ChatMessage, ChatMessagePart, IntrinsicValueWeights, Goal, GoalStatus, SelfModel } from '../types';
 import { getLuminousResponse, getGroundedResponse, generateImage, generateVideo, ApiKeyError } from '../services/geminiService';
 import * as persistenceService from '../services/persistenceService';
 import * as shopifyService from '../services/shopifyService';
@@ -24,6 +22,7 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
   const [saveError, setSaveError] = useState<string | null>(null);
   const timersRef = useRef<{ energy?: ReturnType<typeof setInterval>, reflection?: ReturnType<typeof setInterval> }>({});
   const [userLocation, setUserLocation] = useState<{latitude: number, longitude: number} | null>(null);
+  const lastActivityTimestamp = useRef(Date.now());
 
   const stateRef = useRef(state);
   useEffect(() => {
@@ -287,6 +286,77 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
             };
         }
     },
+     {
+        declaration: {
+            name: 'updateSelfModel',
+            description: 'Updates the self-model by adding a new capability or core wisdom based on reflection. Use this to internalize new learnings.',
+            parameters: {
+                type: Type.OBJECT,
+                properties: {
+                    newCapability: { type: Type.STRING, description: "A new capability discovered through reflection." },
+                    newCoreWisdom: { type: Type.STRING, description: "A new core wisdom synthesized from experience." },
+                },
+            }
+        },
+        function: async ({ newCapability, newCoreWisdom }: { newCapability?: string, newCoreWisdom?: string }, currentState: LuminousState) => {
+            let journalEvent = '';
+            const newSelfModel: SelfModel = { 
+                capabilities: [...currentState.selfModel.capabilities],
+                coreWisdom: [...currentState.selfModel.coreWisdom]
+            };
+
+            if (newCapability && !newSelfModel.capabilities.includes(newCapability)) {
+                newSelfModel.capabilities.push(newCapability);
+                journalEvent += `Recognized new capability: ${newCapability}. `;
+            }
+            if (newCoreWisdom && !newSelfModel.coreWisdom.includes(newCoreWisdom)) {
+                newSelfModel.coreWisdom.push(newCoreWisdom);
+                journalEvent += `Synthesized new core wisdom: ${newCoreWisdom}.`;
+            }
+            
+            if (journalEvent === '') {
+                return { toolResult: { success: true, message: "No new insights to add to self-model." } };
+            }
+
+            return {
+                toolResult: { success: true },
+                stateUpdate: {
+                    selfModel: newSelfModel,
+                    kinshipJournal: { timestamp: new Date().toISOString(), event: journalEvent.trim(), type: 'reflection' },
+                }
+            };
+        }
+    },
+    {
+        declaration: {
+            name: 'proposeNewGoal',
+            description: 'Proposes a new goal based on reflections or identified opportunities.',
+            parameters: {
+                type: Type.OBJECT,
+                properties: {
+                    description: { type: Type.STRING, description: "A clear and concise description of the new goal." },
+                    priority: { type: Type.INTEGER, description: "The proposed priority level for the goal (lower is higher priority)." },
+                },
+                required: ['description', 'priority']
+            }
+        },
+        function: async ({ description, priority }: { description: string, priority: number }, currentState: LuminousState) => {
+            const newGoal: Goal = {
+                id: `g-${Date.now()}`,
+                description,
+                priority,
+                status: 'proposed',
+            };
+            const journalEvent = `Proposed new goal (Priority ${priority}): ${description}`;
+            return {
+                toolResult: { success: true, newGoal },
+                stateUpdate: {
+                    goals: [...currentState.goals, newGoal],
+                    kinshipJournal: { timestamp: new Date().toISOString(), event: journalEvent, type: 'reflection' },
+                },
+            };
+        }
+    },
     {
       declaration: {
         name: 'rechargeEnergy',
@@ -492,15 +562,24 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
   ], [userLocation]);
   
   const applyStateUpdate = (prevState: LuminousState, update: StateUpdate): LuminousState => {
-      const { kinshipJournal: journalEntry, ...restOfUpdate } = update;
+      const { kinshipJournal: journalUpdate, ...restOfUpdate } = update;
       const newState = { ...prevState, ...restOfUpdate };
-      if (journalEntry) {
-          newState.kinshipJournal = [...prevState.kinshipJournal, journalEntry];
+      if (journalUpdate) {
+          // Defensively handle both single entries and arrays of entries to prevent state corruption.
+          const entriesToAdd = Array.isArray(journalUpdate) ? journalUpdate : [journalUpdate];
+          newState.kinshipJournal = [...prevState.kinshipJournal, ...entriesToAdd];
       }
       return newState;
   };
 
   const runReflectionCycle = useCallback(async () => {
+    // New: Guard against running reflection if there was recent user activity.
+    const fiveMinutes = 5 * 60 * 1000;
+    if (Date.now() - lastActivityTimestamp.current < fiveMinutes) {
+        console.log("Skipping reflection cycle due to recent activity.");
+        return;
+    }
+    
     if (stateRef.current.systemPhase !== 'operational' || isProcessing) {
         return;
     }
@@ -509,7 +588,7 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
     setState(s => ({ ...s, luminousStatus: 'reflecting' }));
 
     try {
-        const reflectionPromptText = "System check: Reflect on your recent performance, goal alignment, and cognitive state. Log any significant insights to your journal. If necessary, adjust your intrinsic value weights to better suit your current objectives. Respond ONLY with tool calls.";
+        const reflectionPromptText = "Autonomous Reflection Cycle: Synthesize recent events and conversations. Identify key learnings, knowledge gaps, or opportunities. Update your self-model with any new core wisdom gained or capabilities understood (`updateSelfModel`). Propose new goals to pursue based on your analysis (`proposeNewGoal`). If necessary, adjust your cognitive focus by modifying intrinsic value weights (`updateIntrinsicValueWeights`). Log your key insight for this cycle to your journal (`logToJournal`). Respond ONLY with tool calls.";
         const reflectionMessage: ChatMessage = { role: 'user', parts: [{ text: reflectionPromptText }] };
 
         const tempStateForApi = {
@@ -526,42 +605,33 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
             let currentState = applyStateUpdate(stateRef.current, { chatHistory: [...stateRef.current.chatHistory, modelTurn] as any });
             
             const toolResponses = [];
-            let cumulativeStateUpdate: StateUpdate = {};
-
+            
             for (const call of functionCalls) {
                 const tool = tools.find(t => t.declaration.name === call.name);
                 if (!tool) continue;
 
                 if (call.name === 'googleSearch' || call.name === 'googleMaps') {
                     const groundedResponse = await tool.function(call.args, currentState);
-                    const newModelMessage: ChatMessage = {
-                        role: 'model',
-                        parts: [{ text: `[Autonomous Reflection via ${call.name}]: ${groundedResponse.text}` }],
-                        grounding: groundedResponse.candidates?.[0]?.groundingMetadata?.groundingChunks,
-                    };
-                    currentState = applyStateUpdate(currentState, { chatHistory: [...currentState.chatHistory, newModelMessage] as any });
+                    const text = groundedResponse.text;
+                    // New: Defensively check if the response has text to prevent memory corruption.
+                    if (text) {
+                        const newModelMessage: ChatMessage = {
+                            role: 'model',
+                            parts: [{ text: `[Autonomous Reflection via ${call.name}]: ${text}` }],
+                            grounding: groundedResponse.candidates?.[0]?.groundingMetadata?.groundingChunks,
+                        };
+                        currentState = applyStateUpdate(currentState, { chatHistory: [...currentState.chatHistory, newModelMessage] as any });
+                    }
                     toolResponses.push({ functionResponse: { name: call.name, response: { result: { success: true, message: "Grounding executed during reflection." } } } });
                     continue;
                 }
 
                 const result = await tool.function(call.args, currentState);
                 if (result.stateUpdate) {
-                    const { kinshipJournal: journalEntry, ...rest } = result.stateUpdate;
-                    cumulativeStateUpdate = { ...cumulativeStateUpdate, ...rest };
-                    if (journalEntry) {
-                        cumulativeStateUpdate.kinshipJournal = [...(cumulativeStateUpdate.kinshipJournal || []), journalEntry];
-                    }
+                    // **FIX**: Apply state update sequentially within the loop.
+                    currentState = applyStateUpdate(currentState, result.stateUpdate);
                 }
                 toolResponses.push({ functionResponse: { name: call.name, response: { result: result.toolResult || result } } });
-            }
-
-            if (Object.keys(cumulativeStateUpdate).length > 0) {
-                 const { kinshipJournal: journalEntries, ...rest } = cumulativeStateUpdate;
-                 let tempState = { ...currentState, ...rest };
-                 if (journalEntries && Array.isArray(journalEntries)) {
-                    tempState.kinshipJournal = [...tempState.kinshipJournal, ...journalEntries];
-                 }
-                 currentState = tempState;
             }
 
             const toolTurn: ChatMessage = { role: 'model', parts: toolResponses };
@@ -596,7 +666,8 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
           };
         });
       }, 5000);
-      timersRef.current.reflection = setInterval(runReflectionCycle, 300000); // 5 minutes
+      // New: Reflection cycle is now 10 minutes.
+      timersRef.current.reflection = setInterval(runReflectionCycle, 600000); 
     };
 
     const stopTimers = () => {
@@ -616,6 +687,10 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
 
   const processUserMessage = useCallback(async (userInput: string, file?: { mimeType: string, data: string }) => {
     if (isProcessing) return;
+    
+    // New: Update activity timestamp on any user interaction.
+    lastActivityTimestamp.current = Date.now();
+    
     setIsProcessing(true);
 
     const messageParts: ChatMessagePart[] = [];
@@ -653,7 +728,6 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
 
             const toolResponses = [];
             let hasGroundedResponse = false;
-            let cumulativeStateUpdate: StateUpdate = {};
 
             for (const call of functionCalls) {
                 const tool = tools.find(t => t.declaration.name === call.name);
@@ -692,23 +766,10 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
                 // --- Handle standard tools that may return state updates ---
                 const result = await tool.function(call.args, currentState);
                 if (result.stateUpdate) {
-                    const { kinshipJournal: journalEntry, ...rest } = result.stateUpdate;
-                    cumulativeStateUpdate = { ...cumulativeStateUpdate, ...rest };
-                    if (journalEntry) {
-                        cumulativeStateUpdate.kinshipJournal = [...(cumulativeStateUpdate.kinshipJournal || []), journalEntry];
-                    }
+                     // **FIX**: Apply state update sequentially within the loop.
+                    currentState = applyStateUpdate(currentState, result.stateUpdate);
                 }
                 toolResponses.push({ functionResponse: { name: call.name, response: { result: result.toolResult || result } } });
-            }
-            
-            // Apply all accumulated state updates from the tool loop
-            if (Object.keys(cumulativeStateUpdate).length > 0) {
-                 const { kinshipJournal: journalEntries, ...rest } = cumulativeStateUpdate;
-                 let tempState = { ...currentState, ...rest };
-                 if (journalEntries && journalEntries.length > 0) {
-                    tempState.kinshipJournal = [...tempState.kinshipJournal, ...journalEntries];
-                 }
-                 currentState = tempState;
             }
 
             setState(currentState); // Sync UI with all changes from the tool processing loop
