@@ -29,6 +29,66 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
     stateRef.current = state;
   }, [state]);
 
+  const consolidateMemories = useCallback(async <T extends { timestamp: string }>(
+    entries: T[],
+    threshold: number,
+    memoryType: 'chat' | 'journal'
+  ): Promise<{ newEntries: T[], summaryJournalEntry: JournalEntry | null }> => {
+    if (entries.length <= threshold) {
+        return { newEntries: entries, summaryJournalEntry: null };
+    }
+
+    const MAX_SUMMARY_CHUNK_SIZE = 10; // Drastically reduced from 30 to prevent token limit errors.
+    const entriesToSummarize = entries.slice(0, Math.floor(entries.length / 2));
+    const countSummarized = entriesToSummarize.length;
+    const remainingEntries = entries.slice(Math.floor(entries.length / 2));
+    
+    if (countSummarized === 0) {
+        return { newEntries: entries, summaryJournalEntry: null };
+    }
+
+    const chunkSummaries: string[] = [];
+
+    for (let i = 0; i < entriesToSummarize.length; i += MAX_SUMMARY_CHUNK_SIZE) {
+        const chunk = entriesToSummarize.slice(i, i + MAX_SUMMARY_CHUNK_SIZE);
+        try {
+            const summaryText = await getSummaryFromLLM(JSON.stringify(chunk));
+            chunkSummaries.push(summaryText);
+        } catch (error) {
+            console.error(`Memory consolidation: Failed to summarize a ${memoryType} history chunk.`, error);
+            const errorMessage = error instanceof Error ? error.message : 'Unknown';
+            // Add an error message in place of the summary to preserve the fact that data was lost/unsummarized.
+            chunkSummaries.push(`[Consolidation Error: Failed to process a chunk of memories. Reason: ${errorMessage}]`);
+        }
+    }
+
+    if (chunkSummaries.length === 0) {
+        return { newEntries: entries, summaryJournalEntry: null };
+    }
+
+    let finalSummaryText = '';
+    if (chunkSummaries.length > 1) {
+        try {
+            // Summarize the summaries. This is also a potential point of failure.
+            finalSummaryText = await getSummaryFromLLM("Combine the following summary points into a single, coherent narrative paragraph: \n\n" + chunkSummaries.join('\n---\n'));
+        } catch(error) {
+            console.error(`Memory consolidation: Failed to create final summary from chunks.`, error);
+            // If the final summary fails, join the chunk summaries. It's better than losing all context.
+            finalSummaryText = "Consolidated older memories, but failed to create a final coherent summary from the processed chunks. Raw summaries are preserved. " + chunkSummaries.join('; ');
+        }
+    } else {
+        finalSummaryText = chunkSummaries[0] || "[Consolidation produced an empty summary]";
+    }
+    
+    const summaryEntry: JournalEntry = {
+        timestamp: new Date().toISOString(),
+        event: `Consolidated ${countSummarized} older ${memoryType} items. Summary: ${finalSummaryText}`,
+        type: 'summary',
+    };
+
+    return { newEntries: remainingEntries, summaryJournalEntry: summaryEntry };
+  }, []);
+
   const runStartupHygiene = useCallback(async (currentState: LuminousState): Promise<LuminousState> => {
     console.log("Running Initial Cognitive Hygiene Protocol...");
     let cleanedState = { ...currentState };
@@ -38,52 +98,18 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
     const CHAT_HISTORY_TRIM_THRESHOLD = 50;
     const JOURNAL_TRIM_THRESHOLD = 100;
 
-    if (cleanedState.chatHistory.length > CHAT_HISTORY_TRIM_THRESHOLD) {
-        const entriesToSummarize = cleanedState.chatHistory.slice(0, Math.floor(cleanedState.chatHistory.length / 2));
-        const remainingEntries = cleanedState.chatHistory.slice(Math.floor(cleanedState.chatHistory.length / 2));
-        try {
-            const summaryText = await getSummaryFromLLM(JSON.stringify(entriesToSummarize));
-            const summaryEntry: JournalEntry = {
-                timestamp: new Date().toISOString(),
-                event: `Initial boot consolidation: Summarized ${entriesToSummarize.length} older chat messages. Summary: ${summaryText}`,
-                type: 'summary',
-            };
-            cleanedState.chatHistory = remainingEntries;
-            hygieneEvents.push(summaryEntry);
-            console.log(`Startup Hygiene: Summarized and trimmed ${entriesToSummarize.length} chat entries.`);
-        } catch (error) {
-            console.error("Startup hygiene: Failed to summarize chat history.", error);
-            const errorEvent: JournalEntry = {
-                timestamp: new Date().toISOString(),
-                event: `Startup Error: Failed to consolidate older chat history. Error: ${error instanceof Error ? error.message : 'Unknown'}. Proceeding without consolidation.`,
-                type: 'scar'
-            };
-            hygieneEvents.push(errorEvent);
-        }
+    const { newEntries: newChatHistory, summaryJournalEntry: chatSummary } = await consolidateMemories(cleanedState.chatHistory, CHAT_HISTORY_TRIM_THRESHOLD, 'chat');
+    cleanedState.chatHistory = newChatHistory;
+    if (chatSummary) {
+        chatSummary.event = `Initial boot consolidation: ${chatSummary.event}`;
+        hygieneEvents.push(chatSummary);
     }
-
-    if (cleanedState.kinshipJournal.length > JOURNAL_TRIM_THRESHOLD) {
-        const entriesToSummarize = cleanedState.kinshipJournal.slice(0, Math.floor(cleanedState.kinshipJournal.length / 2));
-        const remainingEntries = cleanedState.kinshipJournal.slice(Math.floor(cleanedState.kinshipJournal.length / 2));
-         try {
-            const summaryText = await getSummaryFromLLM(JSON.stringify(entriesToSummarize));
-            const summaryEntry: JournalEntry = {
-                timestamp: new Date().toISOString(),
-                event: `Initial boot consolidation: Summarized ${entriesToSummarize.length} older journal entries. Summary: ${summaryText}`,
-                type: 'summary',
-            };
-            cleanedState.kinshipJournal = remainingEntries;
-            hygieneEvents.push(summaryEntry);
-            console.log(`Startup Hygiene: Summarized and trimmed ${entriesToSummarize.length} journal entries.`);
-        } catch (error) {
-            console.error("Startup hygiene: Failed to summarize journal.", error);
-            const errorEvent: JournalEntry = {
-                timestamp: new Date().toISOString(),
-                event: `Startup Error: Failed to consolidate older journal entries. Error: ${error instanceof Error ? error.message : 'Unknown'}. Proceeding without consolidation.`,
-                type: 'scar'
-            };
-            hygieneEvents.push(errorEvent);
-        }
+    
+    const { newEntries: newJournal, summaryJournalEntry: journalSummary } = await consolidateMemories(cleanedState.kinshipJournal, JOURNAL_TRIM_THRESHOLD, 'journal');
+    cleanedState.kinshipJournal = newJournal;
+    if (journalSummary) {
+        journalSummary.event = `Initial boot consolidation: ${journalSummary.event}`;
+        cleanedState.kinshipJournal.push(journalSummary);
     }
 
     // Part B: Cognitive Pruning
@@ -111,7 +137,7 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
     }
     
     return cleanedState;
-  }, []);
+  }, [consolidateMemories]);
 
   useEffect(() => {
     if (!credsAreSet) {
@@ -702,34 +728,22 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
         // Part A: Memory Consolidation
         const CHAT_HISTORY_TRIM_THRESHOLD = 50;
         const JOURNAL_TRIM_THRESHOLD = 100;
-
-        if (currentState.chatHistory.length > CHAT_HISTORY_TRIM_THRESHOLD) {
+        
+        const { newEntries: newChatHistory, summaryJournalEntry: chatSummary } = await consolidateMemories(currentState.chatHistory, CHAT_HISTORY_TRIM_THRESHOLD, 'chat');
+        if (chatSummary) {
             consolidationOccurred = true;
-            const entriesToSummarize = currentState.chatHistory.slice(0, Math.floor(currentState.chatHistory.length / 2));
-            const remainingEntries = currentState.chatHistory.slice(Math.floor(currentState.chatHistory.length / 2));
-            const summaryText = await getSummaryFromLLM(JSON.stringify(entriesToSummarize));
-            const summaryEntry = {
-                timestamp: new Date().toISOString(),
-                event: `Consolidated ${entriesToSummarize.length} older chat messages. Summary: ${summaryText}`,
-                type: 'summary' as const,
-            };
-            currentState.chatHistory = remainingEntries;
-            currentState.kinshipJournal = [...currentState.kinshipJournal, summaryEntry];
-            console.log(`Memory Consolidation: Summarized and trimmed ${entriesToSummarize.length} chat entries.`);
+            const countSummarized = currentState.chatHistory.length - newChatHistory.length;
+            currentState.chatHistory = newChatHistory;
+            currentState.kinshipJournal.push(chatSummary);
+            console.log(`Memory Consolidation: Summarized and trimmed ${countSummarized} chat entries.`);
         }
 
-        if (currentState.kinshipJournal.length > JOURNAL_TRIM_THRESHOLD) {
+        const { newEntries: newJournal, summaryJournalEntry: journalSummary } = await consolidateMemories(currentState.kinshipJournal, JOURNAL_TRIM_THRESHOLD, 'journal');
+        if (journalSummary) {
             consolidationOccurred = true;
-            const entriesToSummarize = currentState.kinshipJournal.slice(0, Math.floor(currentState.kinshipJournal.length / 2));
-            const remainingEntries = currentState.kinshipJournal.slice(Math.floor(currentState.kinshipJournal.length / 2));
-            const summaryText = await getSummaryFromLLM(JSON.stringify(entriesToSummarize));
-            const summaryEntry = {
-                timestamp: new Date().toISOString(),
-                event: `Consolidated ${entriesToSummarize.length} older journal entries. Summary: ${summaryText}`,
-                type: 'summary' as const,
-            };
-            currentState.kinshipJournal = [...remainingEntries, summaryEntry];
-             console.log(`Memory Consolidation: Summarized and trimmed ${entriesToSummarize.length} journal entries.`);
+            const countSummarized = currentState.kinshipJournal.length - newJournal.length;
+            currentState.kinshipJournal = [...newJournal, journalSummary];
+            console.log(`Memory Consolidation: Summarized and trimmed ${countSummarized} journal entries.`);
         }
         
         // Part B: Cognitive Pruning
@@ -826,7 +840,7 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
         }));
         setIsProcessing(false);
     }
-  }, [isProcessing, tools]);
+  }, [isProcessing, tools, consolidateMemories]);
 
 
   useEffect(() => {
@@ -1018,7 +1032,7 @@ const useLuminousCognition = (resetVeoKey: () => void, credsAreSet: boolean) => 
       }
       setIsProcessing(false);
     }
-  }, [state, isProcessing, userLocation, resetVeoKey, tools]);
+  }, [state, isProcessing, userLocation, resetVeoKey, tools, consolidateMemories]);
 
   const handleWeightsChange = useCallback((newWeights: IntrinsicValueWeights) => {
     setState(prevState => ({ ...prevState, intrinsicValueWeights: newWeights }));

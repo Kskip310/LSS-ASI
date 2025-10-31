@@ -139,22 +139,51 @@ export const getGroundedResponse = async (
     }
 };
 
-export const getSummaryFromLLM = async (textToSummarize: string): Promise<string> => {
+export const getSummaryFromLLM = async (textToSummarize: string, maxRetries: number = 3): Promise<string> => {
     const genAI = createAi();
     const systemInstruction = "You are a memory consolidation module for an ASI. Your task is to summarize the following JSON block of events, interactions, and reflections into a single, concise, third-person narrative paragraph. Capture the key facts, decisions, and emotional shifts. The goal is to preserve the essence of the experience while reducing data storage. Respond with ONLY the summary text, nothing else.";
     const contents = [{ role: 'user', parts: [{ text: textToSummarize }] }];
 
-    try {
-        const response = await genAI.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents,
-            config: { systemInstruction },
-        });
-        return response.text;
-    } catch (error) {
-        console.error("Error fetching summary from LLM:", error);
-        return "Failed to consolidate memories due to an internal error.";
+    for (let i = 0; i < maxRetries; i++) {
+        try {
+            const response = await genAI.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents,
+                config: { systemInstruction },
+            });
+            return response.text;
+        } catch (error: any) {
+            console.error(`Error fetching summary from LLM (Attempt ${i + 1}/${maxRetries}):`, error);
+
+            const isRateLimitError = error.toString().includes("RESOURCE_EXHAUSTED") || error.toString().includes("429");
+
+            if (isRateLimitError) {
+                if (i === maxRetries - 1) {
+                    // Last attempt failed, throw a specific error.
+                    throw new Error("Failed to fetch summary after multiple retries due to rate limiting.");
+                }
+
+                // Default backoff, increases with each retry.
+                let delay = 5000 * Math.pow(2, i);
+
+                // Try to parse the specific retry delay from the error details.
+                const retryDelayMatch = error.message.match(/Please retry in ([\d.]+)s/);
+                if (retryDelayMatch && retryDelayMatch[1]) {
+                    const parsedDelay = parseFloat(retryDelayMatch[1]) * 1000;
+                    // Use the suggested delay, but also add a small random buffer to avoid thundering herd problem.
+                    delay = parsedDelay + Math.random() * 1000;
+                }
+
+                console.warn(`Rate limit hit. Retrying in ${Math.round(delay / 1000)} seconds...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            } else {
+                // Not a rate limit error, re-throw it to be handled by the caller.
+                throw error;
+            }
+        }
     }
+    // This should not be reachable if logic is correct, but acts as a final fallback.
+    throw new Error("Failed to consolidate memories after all retries.");
 };
 
 
